@@ -48,7 +48,7 @@ def main(constC):
         constC.neiborfluct_threshold = 0.05 # (neighbor ADD)  * neiborfluct_threshold < (new ADD)
 
     if not "sameEQthreshold" in _keylist:
-        constC.sameEQthreshold = 0.05
+        constC.sameEQthreshold = 0.1
 
     if not "IOEsphereA_initial" in _keylist:
        constC. IOEsphereA_initial = 0.20
@@ -58,7 +58,7 @@ def main(constC):
     if not "deltas0" in _keylist:
         constC.deltas0 = 0.1
     if not "deltas" in _keylist:
-        constC.deltas  = 0.05
+        constC.deltas  = 0.01
 
     if not "lADDnQ" in _keylist:
         constC.lADDnQ           = False
@@ -75,6 +75,9 @@ def main(constC):
 
     if not "Ddimer" in _keylist:
         constC.Ddimer          = 0.05
+        #constC.Ddimer          = 0.005
+    if not "Ddimer_max" in _keylist:
+        constC.Ddimer_max      = 0.10
     if not "phitol" in _keylist:
         constC.phitol          = 0.08
 
@@ -110,8 +113,10 @@ def main(constC):
     if not "periodicQ" in _keylist:
         constC.periodicQ = False
     if not "periodicmax" in _keylist:
+        #constC.periodicmax = [1.0e30 for _ in range(100)]
         constC.periodicmax = 1.0e30
     if not "periodicmin" in _keylist:
+        #constC.periodicmin = [-1.0e30 for _ in range(100)]
         constC.periodicmin = -1.0e30
     if not "calc_cupyQ" in _keylist:
         constC.calc_cupyQ = False
@@ -131,7 +136,12 @@ def main(constC):
             from . import calcgau
         except ImportError:
             import calcgau
+        try:
+            from . import calcVES
+        except ImportError:
+            import calcVES
         constC.calcgau = calcgau
+        constC.calcVES = calcVES
         include_dirs = [np.get_include()]
     if not "PBmetaDQ" in _keylist:
         constC.PBmetaDQ = False
@@ -141,48 +151,74 @@ def main(constC):
     if not "use_jacQ" in _keylist:
         constC.use_jacQ = False
 
-    writestr  = ""
-    writestr += "systemname            = %s\n"%constC.systemname
-    writestr += "pwdpath               = %s\n"%constC.pwdpath
-    writestr += "lockfilepath          = %s\n"%constC.lockfilepath
-    writestr += "lockfilepath_UIlist   = %s\n"%constC.lockfilepath_UIlist
-    writestr += "threshold             = %s\n"%constC.threshold
-    writestr += "moveQ                 = %s\n"%constC.moveQ
-    writestr += "threshold             = %s\n"%constC.threshold
-    writestr += "neiborfluct_threshold = %s\n"%constC.neiborfluct_threshold
-    writestr += "sameEQthreshold       = %s\n"%constC.sameEQthreshold
-    writestr += "IOEsphereA_initial    = %s\n"%constC.IOEsphereA_initial
-    writestr += "IOEsphereA_dist       = %s\n"%constC.IOEsphereA_dist
-    writestr += "deltas0               = %s\n"%constC.deltas0
-    writestr += "deltas                = %s\n"%constC.deltas
-    writestr += "lADDnQ                = %s\n"%constC.lADDnQ
-    if constC.lADDnQ:
-        writestr += "IOEl                  = %s\n"%constC.IOEl
-        writestr += "IOEl_forADDstart      = %s\n"%constC.IOEl_forADDstart
-        writestr += "IOEl_forcollect       = %s\n"%constC.IOEl_forcollect
-    writestr += "Ddimer                = %s\n"%constC.Ddimer
-    writestr += "phitol                = %s\n"%constC.phitol
-    writestr += "digThreshold          = %s\n"%constC.digThreshold
-    writestr += "WellTempairedQ        = %s\n"%constC.WellTempairedQ
-    if constC.WellTempairedQ:
-        writestr += "WT_Biasfactor         = %s\n"%constC.WT_Biasfactor
-        writestr += "WT_Biasfactor_ffactor = %s\n"%constC.WT_Biasfactor_ffactor
-    writestr += "initialpointN         = %s\n"%constC.initialpointN
-    writestr += "gridQ                 = %s\n"%constC.gridQ
-    if constC.gridQ:
-        writestr += "grid_min              = %s\n"%constC.grid_min
-        writestr += "grid_max              = %s\n"%constC.grid_max
-        writestr += "grid_bin              = %s\n"%constC.grid_bin
-    writestr += "calc_mpiQ             = %s\n"%constC.calc_mpiQ
-    writestr += "parallelMetaDQ        = %s\n"%constC.parallelMetaDQ
-    writestr += "calc_cupyQ            = %s\n"%constC.calc_cupyQ
-    writestr += "GPUgatherQ            = %s\n"%constC.GPUgatherQ
-    writestr += "cythonQ               = %s\n"%constC.cythonQ
-    writestr += "PBmetaDQ              = %s\n"%constC.PBmetaDQ
-    writestr += "exportADDpointsQ      = %s\n"%constC.exportADDpointsQ
+    if not "x0randomQ" in _keylist:
+        constC.x0randomQ = False
 
-    if not os.path.exists("./jobfiles_meta"):
-        os.mkdir("./jobfiles_meta")
-    with open("./jobfiles_meta/constants.txt", "w") as wf:
-        wf.write(writestr)
+    if not "coeffNmax" in _keylist:
+        constC.coeffNmax  = 100
+    #if not "coeffNskip" in _keylist:
+        #constC.coeffNskip = 5
+
+    if not "coeffPickN" in _keylist:
+        constC.coeffPickN = False
+
+    if not "coeffabsmin" in _keylist:
+        constC.coeffabsmin = 0.0
+
+    if not "chkBifurcationQ" in _keylist:
+        constC.chkBifurcationQ = False
+    if not "bifucationTH" in _keylist:
+        constC.bifucationTH = np.pi / 8.0
+    if not "bifucation_eigTH" in _keylist:
+        constC.bifucation_eigTH = -0.1
+    if not "s_bif0" in _keylist:
+        constC.s_bif0 = np.pi / 8.0
+    if not "s_bif" in _keylist:
+        constC.s_bif = 0.01
+
+
+    constC.writestr  = ""
+    constC.writestr += "systemname            = %s\n"%constC.systemname
+    constC.writestr += "pwdpath               = %s\n"%constC.pwdpath
+    constC.writestr += "lockfilepath          = %s\n"%constC.lockfilepath
+    constC.writestr += "lockfilepath_UIlist   = %s\n"%constC.lockfilepath_UIlist
+    constC.writestr += "threshold             = %s\n"%constC.threshold
+    constC.writestr += "moveQ                 = %s\n"%constC.moveQ
+    constC.writestr += "threshold             = %s\n"%constC.threshold
+    constC.writestr += "neiborfluct_threshold = %s\n"%constC.neiborfluct_threshold
+    constC.writestr += "sameEQthreshold       = %s\n"%constC.sameEQthreshold
+    constC.writestr += "IOEsphereA_initial    = %s\n"%constC.IOEsphereA_initial
+    constC.writestr += "IOEsphereA_dist       = %s\n"%constC.IOEsphereA_dist
+    constC.writestr += "deltas0               = %s\n"%constC.deltas0
+    constC.writestr += "deltas                = %s\n"%constC.deltas
+    constC.writestr += "lADDnQ                = %s\n"%constC.lADDnQ
+    if constC.lADDnQ:
+        constC.writestr += "IOEl                  = %s\n"%constC.IOEl
+        constC.writestr += "IOEl_forADDstart      = %s\n"%constC.IOEl_forADDstart
+        constC.writestr += "IOEl_forcollect       = %s\n"%constC.IOEl_forcollect
+    constC.writestr += "Ddimer                = %s\n"%constC.Ddimer
+    constC.writestr += "phitol                = %s\n"%constC.phitol
+    constC.writestr += "digThreshold          = %s\n"%constC.digThreshold
+    constC.writestr += "WellTempairedQ        = %s\n"%constC.WellTempairedQ
+    if constC.WellTempairedQ:
+        constC.writestr += "WT_Biasfactor         = %s\n"%constC.WT_Biasfactor
+        constC.writestr += "WT_Biasfactor_ffactor = %s\n"%constC.WT_Biasfactor_ffactor
+    constC.writestr += "initialpointN         = %s\n"%constC.initialpointN
+    constC.writestr += "gridQ                 = %s\n"%constC.gridQ
+    if constC.gridQ:
+        constC.writestr += "grid_min              = %s\n"%constC.grid_min
+        constC.writestr += "grid_max              = %s\n"%constC.grid_max
+        constC.writestr += "grid_bin              = %s\n"%constC.grid_bin
+    constC.writestr += "calc_mpiQ             = %s\n"%constC.calc_mpiQ
+    constC.writestr += "parallelMetaDQ        = %s\n"%constC.parallelMetaDQ
+    constC.writestr += "calc_cupyQ            = %s\n"%constC.calc_cupyQ
+    constC.writestr += "GPUgatherQ            = %s\n"%constC.GPUgatherQ
+    constC.writestr += "cythonQ               = %s\n"%constC.cythonQ
+    constC.writestr += "PBmetaDQ              = %s\n"%constC.PBmetaDQ
+    constC.writestr += "exportADDpointsQ      = %s\n"%constC.exportADDpointsQ
+
+    #if not os.path.exists("./jobfiles_meta"):
+        #os.mkdir("./jobfiles_meta")
+    #with open("./jobfiles_meta/constants.txt", "w") as wf:
+        #wf.write(constC.writestr)
     return constC

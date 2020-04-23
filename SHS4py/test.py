@@ -8,32 +8,12 @@
 
 import numpy as np
 import SHS4py
-class constClass():
-    pass
 def main():
-
-    constC = constClass()
-    constC.threshold          = 0.1
-    constC.sameEQthreshold    = 0.05
-    constC.IOEsphereA_initial = 0.2
-    constC.IOEsphereA_dist    = 0.05
-    constC.deltas0            = 0.01
-    constC.deltas             = 0.005
-
-    constC.periodicQ = False
-
-    constC.calc_mpiQ  = False
-    constC.calc_cupyQ = False
-    constC.cythonQ    = False
-    initialpointlist  = [[3.0, 3.0]]
-
-    SHS4py.SHSearch(f, grad, hessian, 
-            importinitialpointQ = False, initialpoints = initialpointlist,
-            const = constC)
+    SHS4py.SHSearch(f, grad, hessian)
 
 def f(x):
     """
-    In this test calculation, STYBLINSKI-TANG FUNCTION is used.
+    in this test calculation, STYBLINSKI-TANG FUNCTION is used.
     https://www.sfu.ca/~ssurjano/stybtang.html
     f(x) = \frac{1}{2}\sum^d_{i=1}(x^4_i-16x_i^2+5x_i)
     """

@@ -6,7 +6,7 @@
 # Distributed under terms of the MIT license.
 
 import numpy as np
-import SHS2py
+import SHS4py
 class constClass():
     pass
 def main():
@@ -29,7 +29,7 @@ def main():
 
     initialpointlist = [np.random.rand(2) * 8.0 - 4.0 for _ in range(10)]
 
-    SHS2py.SHSearch(f, grad, hessian,
+    SHS4py.SHSearch(f, grad, hessian,
             importinitialpointQ = False, initialpoints = initialpointlist,
             const = constC)
 

@@ -13,6 +13,6 @@ print("numpy.get_include() = %s"%numpy.get_include())
 setup(
     name = 'calcgau',
     ext_modules = cythonize('calcgau.pyx'),
-    #include_path = [numpy.get_include()],
+    #include_path = [numpy.get_include()]
     include_dirs = [numpy.get_include()]
     )

@@ -5,8 +5,8 @@
 # Copyright  2019.12.19 Yuki Mitsuta
 # Distributed under terms of the MIT license.
 
-import SHS2py
-from SHS2py import metaDanalyzer, mkconst
+import SHS4py
+from SHS4py import metaDanalyzer, mkconst
 
 class constClass():
     pass
@@ -15,7 +15,6 @@ def main():
     template of the calculation of Metadynamics
     """
     constC = constClass()
-    constC = mkconst.main(constC)
 
     Temp           = 298.0            # tempeture (K) : must same with that of MD simulation
     k_B            = 1.38065e-26      # Boltzmann constant (kJ / K)
@@ -51,6 +50,7 @@ def main():
     height = 0.5 #HEIGHT of the PLUMED setting.
     digTH  = - height * constC.digThreshold
 
+    constC = mkconst.main(constC)
     
     if constC.calc_mpiQ:
         from mpi4py import MPI
@@ -64,7 +64,7 @@ def main():
         root = 0
         size = 1
 
-    metaD  = SHS2py.metaDanalyzer.Metad_result("./HILLS", constC)
+    metaD  = SHS4py.metaDanalyzer.Metad_result("./HILLS", constC)
 
     if size != 1:
         hillD = len(metaD.hillCs) // (constC.initialpointN // size)
@@ -85,7 +85,7 @@ def main():
     else:
         initialpointlist_gather = initialpointlist
 
-    SHS2py.SHSearch(metaD.f, metaD.grad, metaD.hessian,
+    SHS4py.SHSearch(metaD.f, metaD.grad, metaD.hessian,
             importinitialpointQ = False, initialpoints = initialpointlist_gather, 
             SHSrank = rank, SHSroot = root, SHScomm = comm, optdigTH = digTH, const = constC)
 

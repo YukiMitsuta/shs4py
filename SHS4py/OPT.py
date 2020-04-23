@@ -34,8 +34,19 @@ def PoppinsMinimize(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, 
     """
 
     boundlist = []
-    for i in range(len(initialpoint)):
-        boundlist.append((const.wallmin[i], const.wallmax[i]))
+    if const.periodicQ:
+        if type(const.periodicmin) is float:
+            for i in range(len(initialpoint)):
+                boundlist.append((initialpoint[i] + const.periodicmin,
+                                  initialpoint[i] + const.periodicmax))
+        else:
+            for i in range(len(initialpoint)):
+                boundlist.append((initialpoint[i] + const.periodicmin[i],
+                                  initialpoint[i] + const.periodicmax[i]))
+    else:
+        for i in range(len(initialpoint)):
+            boundlist.append((const.wallmin[i], const.wallmax[i]))
+
     if True:
         #result = minimize(f, initialpoint, jac=grad, hess=hessian)
         result = minimize(f, initialpoint, jac=grad, bounds = boundlist, method="L-BFGS-B")
@@ -48,8 +59,8 @@ def PoppinsMinimize(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, 
                 {'type': 'ineq', 'fun': lambda x: cons(x, f, optdigTH)}
                 )
         result = minimize(f, initialpoint, jac=grad, constraints=consf, method="SLSQP")
-    if SHSrank == SHSroot:
-        print("%s: %s"%(SHSrank, np.linalg.norm(result.x - initialpoint)))
+    #if SHSrank == SHSroot:
+        #print("%s: %s"%(SHSrank, np.linalg.norm(result.x - initialpoint)))
         #print("%s: %s"%(SHSrank, result.message))
         
     x_0 = functions.periodicpoint(result.x, const)
@@ -98,7 +109,9 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
     tau  = (x1 - x2) * 0.5
     whileN = 0
     #print("%s: 69"%(SHSrank), flush = True)
-    while whileN < 100:
+    Ddimerdamp = copy.copy(const.Ddimer)
+    NRerrorN = 0
+    while whileN < 1000:
         whileN += 1
         phiturnN = 0
         phiendQ = True
@@ -112,44 +125,52 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
             if np.linalg.norm(F_R) == 0.0:
                 break
             TH   = F_R / np.linalg.norm(F_R)
-            Ctau    =       np.dot(g1 - g0, Etau) / const.Ddimer
-            DelCtau = 2.0 * np.dot(g1 - g0, TH  ) / const.Ddimer
+            Ctau    =       np.dot(g1 - g0, Etau) / Ddimerdamp
+            DelCtau = 2.0 * np.dot(g1 - g0, TH  ) / Ddimerdamp
             phi1    = -0.5 * np.arctan(DelCtau * 0.5 / abs(Ctau))
             if abs(phi1) < const.phitol:
                 break
-            x1prime   = x_0 + Etau * const.Ddimer * np.cos(phi1) + TH * const.Ddimer * np.sin(phi1)
+            x1prime   = x_0 + Etau * Ddimerdamp * np.cos(phi1) + TH * Ddimerdamp * np.sin(phi1)
             g1prime   = grad(x1prime)
             tauprime  = x1prime - x_0
             Etauprime = tauprime / np.linalg.norm(tauprime)
-            Ctauprime = np.dot(g1prime - g0, Etauprime) / const.Ddimer
-    
+            Ctauprime = np.dot(g1prime - g0, Etauprime) / Ddimerdamp
+
             b1 = DelCtau * 0.5
             a1 = (Ctau - Ctauprime + b1 * np.sin(2.0 * phi1)) / (1.0 - np.cos(2.0 * phi1))
             a0 = 2.0 * (Ctau - a1)
-    
+
             phiMIN  = 0.5 * np.arctan(b1 / a1)
-            x1MIN   = x_0 + Etau * const.Ddimer * np.cos(phiMIN) + TH * const.Ddimer * np.sin(phiMIN)
+            x1MIN   = x_0 + Etau * Ddimerdamp * np.cos(phiMIN) + TH * Ddimerdamp * np.sin(phiMIN)
             tauMIN  = x1MIN - x_0
             EtauMIN = tauMIN / np.linalg.norm(tauMIN)
             gMIN    = grad(x1MIN)
-            CtauMIN = np.dot(g1prime - g0, Etauprime) / const.Ddimer
+            CtauMIN = np.dot(g1prime - g0, Etauprime) / Ddimerdamp
             if Ctau < CtauMIN:
                 phiMIN += np.pi * 0.5
-            x1MIN   = x_0 + Etau * const.Ddimer * np.cos(phiMIN) + TH * const.Ddimer * np.sin(phiMIN)
+            x1MIN   = x_0 + Etau * Ddimerdamp * np.cos(phiMIN) + TH * Ddimerdamp * np.sin(phiMIN)
             tauMIN  = x1MIN - x_0
             EtauMIN = tauMIN / np.linalg.norm(tauMIN)
             gMIN    = grad(x1MIN)
-            CtauMIN = np.dot(g1prime - g0, Etauprime) / const.Ddimer
-    
+            CtauMIN = np.dot(g1prime - g0, Etauprime) / Ddimerdamp
+
             x1  = copy.copy(x1MIN)
             tau = copy.copy(tauMIN)
             if abs(phiMIN) < const.phitol:
                 break
             #print("%s: 116"%(SHSrank), flush = True)
-            #print("phiMIN = %s"%phiMIN)
+            #if SHSrank == SHSroot:
+                #print("phiMIN = %s"%phiMIN, flush = True)
         else:
+            Ddimerdamp += const.Ddimer
+            x1   = x_0 + Ddimerdamp * Egrad
+            x2   = x_0 - Ddimerdamp * Egrad
+            tau  = (x1 - x2) * 0.5
             if SHSrank == SHSroot:
-                print("in PoppinsDimer, phiturnN over 100")
+                print("in PoppinsDimer, phiturnN over 100", flush = True)
+                print("Ddimer is changed to %s"%Ddimerdamp, flush = True)
+            if Ddimerdamp <= const.Ddimer_max:
+                continue
             #return False
             #c = inspect.currentframe()
             #with open("./optlist.dat","a") as wf:
@@ -166,7 +187,8 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
                 f_0 = f(x_0)
                 if optdigTH < f_0:
                     if SHSrank == SHSroot:
-                        print("ERROR(140): %s: f(x_0) = %s over optdigTH(% 3.2f)"%(whileN, f_0, optdigTH), flush = True)
+                        c = inspect.currentframe()
+                        print("ERROR(%s): %s: f(x_0) = %s over optdigT, flush = TrueH(% 3.2f)"%(c.f_lineno, whileN, f_0, optdigTH), flush = True)
                     return False
                 #consf = (
                     #{'type': 'ineq', 'fun': lambda x: cons(x_0 + F_T * x, f, optdigTH)}
@@ -174,9 +196,9 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
                 #result = minimize(lambda x: np.linalg.norm(grad(x_0 + F_T * x)),
                             #x0 = 0.0, constraints=consf, method = "cobyla")
                             #x0 = 0.0, constraints=consf, method = "SLSQP")
-                xmax = calcboundmax(x_0, F_T, f, optdigTH, const)
-                if SHSrank == SHSroot:
-                    print("xmax = %s"%xmax, flush = True)
+                xmax = calcboundmax(x_0, F_T, f, optdigTH, const, Ddimerdamp)
+                #if SHSrank == SHSroot:
+                    #print("xmax = %s"%xmax, flush = True)
                 #if SHSrank == SHSroot:
                     #print("%s:start minimize"%datetime.datetime.now(), flush = True)
                 result = minimize(lambda x: np.linalg.norm(grad(x_0 + F_T * x, debagQ = True)),
@@ -184,10 +206,20 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
                 #print("%s: %s"%(SHSrank,xmax), flush = True)
                 #if SHSrank == SHSroot:
                     #print("%s:end minimize"%datetime.datetime.now(), flush = True)
-                resultx = result.x
+                resultx = result.x[0]
                 x_0 = x_0 + F_T * result.x
         else:
             resultx = 0.0
+        if resultx < 1.0e-5:
+            Ddimerdamp += const.Ddimer
+            x1   = x_0 + Ddimerdamp * Egrad
+            x2   = x_0 - Ddimerdamp * Egrad
+            tau  = (x1 - x2) * 0.5
+            if SHSrank == SHSroot:
+                print("resultx = 0", flush = True)
+                print("Ddimer is changed to %s"%Ddimerdamp, flush = True)
+            if Ddimerdamp <= const.Ddimer_max:
+                continue
         x_0 = functions.periodicpoint(x_0, const)
         f_0 = f(x_0)
         if SHSrank == SHSroot:
@@ -202,8 +234,7 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
                 print("ERROR: %s: f(x_0) = %s over optdigTH(% 3.2f)"%(whileN, f_0, optdigTH))
             return False
         #if result.x <= const.threshold:
-        if resultx == 0.0:
-
+        if resultx < 1.0e-5:
             hessinv      = hessian(x_0)
             if SHSrank == SHSroot:
                 print("Try Newton-Raphthon", flush = True)
@@ -226,29 +257,60 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
             if not optdigTH is False:
                 if optdigTH < f_next:
                     if SHSrank == SHSroot:
-                        print("ERROR(200): %s: f(x_next) = %s over optdigTH(% 3.2f)"%(whileN, f_next, optdigTH), flush = True)
+                        c = inspect.currentframe()
+                        print("ERROR(%s) %s: f(x_next) = %s over optdigTH(% 3.2f)"%(c.f_lineno, whileN, f_next, optdigTH), flush = True)
                     while True:
                         x_delta *= 0.5
                         if SHSrank == SHSroot:
                             print("np.linalg.norm(x_delta) = %s"%np.linalg.norm(x_delta))
-                        if np.linalg.norm(x_delta) < 10e-5:
+                        if np.linalg.norm(x_delta) < 1.0e-5:
                             if SHSrank == SHSroot:
                                 print("ERROR: cannot move: return False")
                             return False
                         f_next = f(x_0 + x_delta)
                         if f_next < optdigTH:
-                            x_0 = x_0 + x_delta
+                            #x_0 = x_0 + x_delta
                             break
 
                     #x_0 += xmax * x_delta / np.linalg.norm(x_delta)
-                else:
-                    x_0 += x_delta 
+                #else:
+                    #x_0 += x_delta 
+            #else:
+                #x_0 += x_delta 
+            g_next = grad(x_0 + x_delta)
+            if np.linalg.norm(graddamp) < np.linalg.norm(g_next):
+            #if False:
+                if SHSrank == SHSroot:
+                    c = inspect.currentframe()
+                    print("ERROR(%s): %s: Norm(graddamp) < Norm(g_next)"%(c.f_lineno, whileN), flush = True)
+                if 20 < NRerrorN:
+                    return False
+                NRerrorN += 1
+                while True:
+                    x_delta *= 0.5
+                    #if SHSrank == SHSroot:
+                        #print("np.linalg.norm(x_delta) = %s"%np.linalg.norm(x_delta), flush = True)
+                    if np.linalg.norm(x_delta) < 10e-5:
+                        if SHSrank == SHSroot:
+                            print("ERROR: cannot move: return False")
+                        return False
+                    g_next = grad(x_0 + x_delta)
+                    if np.linalg.norm(g_next) < np.linalg.norm(graddamp):
+                        x_0 = x_0 + x_delta
+                        break
             else:
                 x_0 += x_delta 
+            Ddimerdamp = copy.copy(const.Ddimer)
+            x1   = x_0 + Ddimerdamp * Egrad
+            x2   = x_0 - Ddimerdamp * Egrad
+            tau  = (x1 - x2) * 0.5
+            if SHSrank == SHSroot:
+                print("Ddimer is changed to %s"%Ddimerdamp)
+                print("x_delta_ini = %s"%np.linalg.norm(x_0 - initialpoint), flush = True)
 
     else:
         if SHSrank == SHSroot:
-            print("in PoppinsDimer, whileN over 100")
+            print("in PoppinsDimer, whileN over 1000")
             print("x_0 = %s"%x_0)
         return False
     return False
@@ -257,11 +319,12 @@ def cons(x, f, optdigTH):
     constructionn to restrect L-BFGS-B calculation to f(x) < optdigTH
     """
     return optdigTH - f(x)
-def calcboundmax(x_0, F_T, f, optdigTH, const):
+def calcboundmax(x_0, F_T, f, optdigTH, const, Ddimerdamp):
     """
     calcboundmax:         calculation of the max of x to f(x) < optdigTH  in the dimer calculation
     """
-    xdelta = copy.copy(const.Ddimer)
+    #xdelta = copy.copy(const.Ddimer)
+    xdelta = copy.copy(Ddimerdamp)
     xmax   = 0.0
     whileN = 0
     while True:

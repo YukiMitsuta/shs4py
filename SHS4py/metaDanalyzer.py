@@ -17,6 +17,7 @@ Available functions:
 import numpy as np
 import copy, os
 
+
 class GaussianC(object):
     """
     This class is performed as gaussian function.
@@ -70,7 +71,8 @@ class GaussianC(object):
         return True, d, dis
     def f(self, x):
         if self.const.cythonQ:
-            returnf = self.const.calcgau.f_periodic(
+            #returnf = self.const.calcgau.f_periodic(
+            returnf = self.const.calcgau.f(
                     x, self.s, self.sigmainv, self.periodicmax, self.periodicmin, 
                     self.dim, self.h, self.const.periodicQ)
             return returnf
@@ -127,7 +129,7 @@ class Metad_result(object):
         gard    : the gradient of f on x.
         hessian : the hessian of f on x.
     """
-    def __init__(self, hillpath, const, maxtime = 1.0e30):
+    def __init__(self, hillpath, const, maxtime = 1.0e30, t_delta = 0.0):
         self.const       = const
         if self.const.calc_mpiQ:
             from mpi4py import MPI
@@ -174,6 +176,7 @@ class Metad_result(object):
             if self.rank == self.root:
                 print("import %s"%hillpath)
             hillcounter = 0
+            linecounter = 0
             for line in open(hillpath):
                 line = line.split()
                 if line[0] == "#!":
@@ -182,10 +185,13 @@ class Metad_result(object):
                         if self.rank == self.root:
                             print("dimension = %s"%self.dim)
                     continue
+                linecounter += 1
+                if maxtime < linecounter * t_delta:
+                    break
                 if hillcounter % self.size == self.rank:
-                    t = float(line[0])
-                    if maxtime + 1 < t:
-                        break
+                    #t = float(line[0])
+                    #if maxtime + 1 < t:
+                        #break
                     hillC          = GaussianC(const)
                     hillC.dim      = self.dim
                     hillC.s        = np.array(line[1:self.dim + 1], dtype = float)
@@ -193,6 +199,7 @@ class Metad_result(object):
                     hillC.sigmainv = np.array([1.0 / si for si in _sigma])
                     hillC.h        = float(line[-2])
                     self.hillCs.append(hillC)
+                #hillcounter += 1
                 if self.const.calc_cupyQ:
                     if self.const.parallelMetaDQ:
                         hillcounter += 1
@@ -204,72 +211,81 @@ class Metad_result(object):
 
         if self.rank == self.root:
             print("calculation time   : % 10.1f ps"%float(line[0]))
-            if maxtime < t:
-                print("collect data until muxtime = % 10.1f ps"%maxtime)
+            #if maxtime < t:
+            if maxtime < linecounter * t_delta:
+                print("collect data until Total of MetaD time = % 10.1f ps"%maxtime)
             print("The numbe of hills : %s"%(len(self.hillCs) * self.size))
         if self.const.gridQ:
             if self.rank == self.root:
                 print("Try grid calculation")
             self.import_grid()
         if self.const.calc_cupyQ:
-            self.h_cupy          = self.const.cp.array([hillC.h for hillC in self.hillCs])
-            self.slistall        = self.const.cp.array(np.array([hillC.s for hillC in self.hillCs]).transpose())
-            self.sigmainvlistall = self.const.cp.array(np.array([hillC.sigmainv for hillC in self.hillCs]).transpose())
-            @self.const.cp.fuse(kernel_name = "f_kernel")
-            def f_kernel(dis_sq, h):
-                return - h * self.const.cp.exp(- 0.5 * dis_sq)
-            if self.const.periodicQ:
-                @self.const.cp.fuse(kernel_name = "dist_forf_kernel0")
-                def dist_forf_kernel0(x_i, s_i, sigmainv_i, periodicmin, periodicmax):
-                    sdamp  = (s_i - periodicmax - x_i) % (periodicmin - periodicmax)
-                    sdamp += periodicmax + x_i
-                    dpoint = (x_i - sdamp) * sigmainv_i
-                    return dpoint * dpoint
-                @self.const.cp.fuse(kernel_name = "dist_forf_kernel")
-                def dist_forf_kernel(x_i, s_i, sigmainv_i, dis_before, periodicmin, periodicmax):
-                    sdamp  = (s_i - periodicmax - x_i) % (periodicmin - periodicmax)
-                    sdamp += periodicmax + x_i
-                    dpoint = (x_i - sdamp) * sigmainv_i
-                    return dis_before + dpoint * dpoint
-                @self.const.cp.fuse(kernel_name = "dist_forgrad_kernel0")
-                def dist_forgrad_kernel0(x_i, s_i, sigmainv_i, periodicmin, periodicmax):
-                    sdamp  = (s_i - periodicmax - x_i) % (periodicmin - periodicmax)
-                    sdamp += periodicmax + x_i
-                    dpoint = (x_i - sdamp) * sigmainv_i
-                    return dpoint * sigmainv_i, dpoint * dpoint
-                @self.const.cp.fuse(kernel_name = "dist_forgrad_kernel")
-                def dist_forgrad_kernel(x_i, s_i, sigmainv_i, dis_before, periodicmin, periodicmax):
-                    sdamp  = (s_i - periodicmax - x_i) % (periodicmin - periodicmax)
-                    sdamp += periodicmax + x_i
-                    dpoint = (x_i - sdamp) * sigmainv_i
-                    return dpoint * sigmainv_i, dis_before + dpoint * dpoint
+            if self.const.parallelMetaDQ:
+                allocateCupyQ = True
             else:
-                @self.const.cp.fuse(kernel_name = "dist_forf_kernel0")
-                def dist_forf_kernel0(x_i, s_i, sigmainv_i):
-                    dpoint = (x_i - s_i) * sigmainv_i
-                    return dpoint * dpoint
-                @self.const.cp.fuse(kernel_name = "dist_forf_kernel")
-                def dist_forf_kernel(x_i, s_i, sigmainv_i, dis_before):
-                    dpoint = (x_i - s_i) * sigmainv_i
-                    return dis_before + dpoint * dpoint
-                @self.const.cp.fuse(kernel_name = "dist_forgrad_kernel0")
-                def dist_forgrad_kernel0(x_i, s_i, sigmainv_i):
-                    dpoint = (x_i - s_i) * sigmainv_i
-                    return dpoint * sigmainv_i, dpoint * dpoint
-                @self.const.cp.fuse(kernel_name = "dist_forgrad_kernel")
-                def dist_forgrad_kernel(x_i, s_i, sigmainv_i, dis_before):
-                    dpoint = (x_i - s_i) * sigmainv_i
-                    return dpoint * sigmainv_i, dis_before + dpoint * dpoint
-            self.f_kernel             = f_kernel
-            self.dist_forf_kernel     = dist_forf_kernel
-            self.dist_forf_kernel0    = dist_forf_kernel0
-            self.dist_forgrad_kernel0 = dist_forgrad_kernel0
-            self.dist_forgrad_kernel  = dist_forgrad_kernel
-    def f(self, x):
+                if self.rank == self.root:
+                    allocateCupyQ = True
+                else:
+                    allocateCupyQ = False
+            if allocateCupyQ:
+                self.h_cupy          = self.const.cp.array([hillC.h for hillC in self.hillCs])
+                self.slistall        = self.const.cp.array(np.array([hillC.s for hillC in self.hillCs]).transpose())
+                self.sigmainvlistall = self.const.cp.array(np.array([hillC.sigmainv for hillC in self.hillCs]).transpose())
+                @self.const.cp.fuse(kernel_name = "f_kernel")
+                def f_kernel(dis_sq, h):
+                    return - h * self.const.cp.exp(- 0.5 * dis_sq)
+                if self.const.periodicQ:
+                    @self.const.cp.fuse(kernel_name = "dist_forf_kernel0")
+                    def dist_forf_kernel0(x_i, s_i, sigmainv_i, periodicmin, periodicmax):
+                        sdamp  = (s_i - periodicmax - x_i) % (periodicmin - periodicmax)
+                        sdamp += periodicmax + x_i
+                        dpoint = (x_i - sdamp) * sigmainv_i
+                        return dpoint * dpoint
+                    @self.const.cp.fuse(kernel_name = "dist_forf_kernel")
+                    def dist_forf_kernel(x_i, s_i, sigmainv_i, dis_before, periodicmin, periodicmax):
+                        sdamp  = (s_i - periodicmax - x_i) % (periodicmin - periodicmax)
+                        sdamp += periodicmax + x_i
+                        dpoint = (x_i - sdamp) * sigmainv_i
+                        return dis_before + dpoint * dpoint
+                    @self.const.cp.fuse(kernel_name = "dist_forgrad_kernel0")
+                    def dist_forgrad_kernel0(x_i, s_i, sigmainv_i, periodicmin, periodicmax):
+                        sdamp  = (s_i - periodicmax - x_i) % (periodicmin - periodicmax)
+                        sdamp += periodicmax + x_i
+                        dpoint = (x_i - sdamp) * sigmainv_i
+                        return dpoint * sigmainv_i, dpoint * dpoint
+                    @self.const.cp.fuse(kernel_name = "dist_forgrad_kernel")
+                    def dist_forgrad_kernel(x_i, s_i, sigmainv_i, dis_before, periodicmin, periodicmax):
+                        sdamp  = (s_i - periodicmax - x_i) % (periodicmin - periodicmax)
+                        sdamp += periodicmax + x_i
+                        dpoint = (x_i - sdamp) * sigmainv_i
+                        return dpoint * sigmainv_i, dis_before + dpoint * dpoint
+                else:
+                    @self.const.cp.fuse(kernel_name = "dist_forf_kernel0")
+                    def dist_forf_kernel0(x_i, s_i, sigmainv_i):
+                        dpoint = (x_i - s_i) * sigmainv_i
+                        return dpoint * dpoint
+                    @self.const.cp.fuse(kernel_name = "dist_forf_kernel")
+                    def dist_forf_kernel(x_i, s_i, sigmainv_i, dis_before):
+                        dpoint = (x_i - s_i) * sigmainv_i
+                        return dis_before + dpoint * dpoint
+                    @self.const.cp.fuse(kernel_name = "dist_forgrad_kernel0")
+                    def dist_forgrad_kernel0(x_i, s_i, sigmainv_i):
+                        dpoint = (x_i - s_i) * sigmainv_i
+                        return dpoint * sigmainv_i, dpoint * dpoint
+                    @self.const.cp.fuse(kernel_name = "dist_forgrad_kernel")
+                    def dist_forgrad_kernel(x_i, s_i, sigmainv_i, dis_before):
+                        dpoint = (x_i - s_i) * sigmainv_i
+                        return dpoint * sigmainv_i, dis_before + dpoint * dpoint
+                self.f_kernel             = f_kernel
+                self.dist_forf_kernel     = dist_forf_kernel
+                self.dist_forf_kernel0    = dist_forf_kernel0
+                self.dist_forgrad_kernel0 = dist_forgrad_kernel0
+                self.dist_forgrad_kernel  = dist_forgrad_kernel
+    def f(self, x, ADDQ = False):
         if self.const.gridQ:
             returnf = self.f_grid(x)
         elif self.const.calc_cupyQ:
-            returnf = self.f_cupy(x)
+            returnf = self.f_cupy(x, ADDQ)
         elif self.const.calc_mpiQ:
             x = self.comm.bcast(x, root=0)
             if self.const.PBmetaDQ:
@@ -459,20 +475,32 @@ class Metad_result(object):
                 f_xmax = f_xmax[0]
             returnf += (x_min[i] - x[i]) / self.const.grid_bin * (f_xmin - f_xmax)
         return returnf
-    def f_cupy(self, x):
+    def f_cupy(self, x, ADDQ):
         if self.rank == self.root:
+            if ADDQ:
+            #if False:
+                _hlist = self.h_part
+                _slist = self.slist_part
+                _sigmainvlist = self.sigmainvlist_part
+            else:
+                _hlist = self.h_cupy
+                _slist = self.slistall
+                _sigmainvlist = self.sigmainvlistall
             calcdpointQ = True
             if self.const.periodicQ:
-                dis_sqlist = self.dist_forf_kernel0(x[0], self.slistall[0], self.sigmainvlistall[0], self.const.periodicmin, self.const.periodicmax)
+                dis_sqlist = self.dist_forf_kernel0(x[0], _slist[0], _sigmainvlist[0], 
+                                self.const.periodicmin, self.const.periodicmax)
             else:
-                dis_sqlist = self.dist_forf_kernel0(x[0], self.slistall[0], self.sigmainvlistall[0])
+                dis_sqlist = self.dist_forf_kernel0(x[0], _slist[0], _sigmainvlist[0])
             for i in range(1, len(x)):
                 if self.const.periodicQ:
-                    dis_sqlist = self.dist_forf_kernel(x[i], self.slistall[i], self.sigmainvlistall[i], dis_sqlist, self.const.periodicmin, self.const.periodicmax)
+                    dis_sqlist = self.dist_forf_kernel(x[i], _slist[i], _sigmainvlist[i], 
+                                dis_sqlist, self.const.periodicmin, self.const.periodicmax)
                 else:
-                    dis_sqlist = self.dist_forf_kernel(x[i], self.slistall[i], self.sigmainvlistall[i], dis_sqlist)
-            returnfdamp = self.const.cp.sum(self.f_kernel(dis_sqlist, self.h_cupy))
-            returnf = float(returnfdamp)
+                    dis_sqlist = self.dist_forf_kernel(x[i], _slist[i], _sigmainvlist[i], dis_sqlist)
+            returnf = self.const.cp.sum(self.f_kernel(dis_sqlist, _hlist))
+            #returnfdamp = self.const.cp.sum(self.f_kernel(dis_sqlist, _hlist))
+            #returnf = float(returnfdamp)
         else:
             returnf = None
         if self.const.calc_mpiQ:
@@ -493,9 +521,221 @@ class Metad_result(object):
         writeline.rstrip("\n")
         with open("./convtest.csv", "w") as wf:
             wf.write(writeline) 
-    def grad(self, x, debagQ = False):
+    def fError_corrylation(self):
+        """
+        J Phys Chem B. 2015 Jan 22;119(3):736-42. doi: 10.1021/jp504920s.
+        the second term of Eq (12)
+        """
+        from scipy.integrate import nquad
+        import random
+        import itertools
+        #sigmadelta = 5.0 / self.hillCs[0].sigmainv
+        sigmadelta = 10.0 / self.hillCs[0].sigmainv
+        #sigmadelta = 20.0 / self.hillCs[0].sigmainv
+        #sigmadelta = 0.0 / self.hillCs[0].sigmainv
+        if self.rank == self.root:
+            lim = []
+            for j in range(self.dim):
+                #lim.append([min(hillC.s[j] for hillC in self.hillCs[:i]) - sigmadelta[j],
+                        #max(hillC.s[j] for hillC in self.hillCs[:i]) + sigmadelta[j]])
+                lim.append([min(hillC.s[j] for hillC in self.hillCs) - sigmadelta[j],
+                        max(hillC.s[j] for hillC in self.hillCs) + sigmadelta[j]])
+        else:
+            lim = None
+        if self.const.calc_mpiQ:
+            lim    = self.comm.bcast(lim,    root=0)
+
+        fsum = 0.0
+        term = 1.0
+        hillN = len(self.hillCs)
+
+        #meshpointMin = np.array([x[0] for x  in lim]) + sigmadelta * 0.5
+        meshpointMin = np.array([x[0] for x  in lim])
+        meshpoints = []
+        meshpointsdamp = []
+        lenbefore = len(meshpoints)
+        for hillC in self.hillCs:
+            meshnest = []
+            for j in range(self.dim):
+                i_mesh = 0
+                while True:
+                    p_j = meshpointMin[j] + (i_mesh + 1) * sigmadelta[j]
+                    if hillC.s[j] < p_j:
+                        break
+                    i_mesh += 1
+                meshnest.append(i_mesh)
+            meshpointsdamp.append(tuple(meshnest))
+            #if meshnest in meshpoints:
+                #continue
+        meshpointsdamp = list(set(meshpointsdamp))
+        #print('len(meshpointsdamp) = %s'%len(meshpointsdamp))
+        meshpoints = []
+        for meshnest in meshpointsdamp:
+            for iterpoints in itertools.product([-1,0,1], repeat=self.dim):
+            #for iterpoints in itertools.product([0], repeat=self.dim):
+                #if 3 < sum([abs(x) for x in iterpoints]):
+                    #continue
+                meshpoints.append(tuple([meshnest[j] + iterpoints[j] for j in range(self.dim)]))
+            meshpoints = list(set(meshpoints))
+            #if lenbefore != len(meshpoints):
+                #print('len(meshpoints) = %s'%len(meshpoints))
+            lenbefore = len(meshpoints)
+        meshpoints = set(meshpoints)
+        meshpoints = [[meshnest, 0.0] for meshnest in meshpoints]
+        print(' # len(meshpoints) = %s'%len(meshpoints))
+        term = 1.0
+        for j in range(self.dim):
+            term *= sigmadelta[j]
+        fsum  = 0.0
+        for meshN, meshpoint in enumerate(meshpoints):
+            p_nest, fsum_mesh = meshpoint
+            p = [meshpointMin[j] + sigmadelta[j] * p_nest[j] for j in range(self.dim)]
+            covlist = []
+            for i in range(5000000):
+                #print(i + 1 % 10)
+                point = []
+                for j in range(len(self.hillCs[0].s)):
+                    point.append(p[j] + sigmadelta[j] * random.random())
+                meshpoints[meshN][1] += float(self.fError(point))
+                if (i + 1)  % 10 == 0:
+                    covlist.append(meshpoints[meshN][1] / (i + 1))
+                    #print(covlist)
+                if (i + 1)  == 100:
+                    if covlist[-1] < 1.0e-5 / len(meshpoints):
+                        break
+                if (i + 1)  % 1000 == 0:
+                    if covlist[-1] < 1.0e-5 / len(meshpoints):
+                        break
+                    else:
+                        covlist = np.array(covlist)
+                        #print(covlist)
+                        print("%s, %s, %s"%(meshN, i, np.var(covlist)))
+                        if np.var(covlist) < 1.0e-5 / len(meshpoints):
+                            break
+                        covlist = []
+            meshpoints[meshN][1] /= (i + 1)
+            fsum = sum(fsum_mesh for _, fsum_mesh in meshpoints)
+            if meshN % 1000 == 0:
+                with open("./MCconv.csv", "a") as wf:
+                    #wf.write('%s, %s, %s\n'%(hillN, (i+1) * len(meshpoints), fsum * term))
+                    wf.write('%s, %s, %s\n'%(hillN, meshN, fsum * term))
+        #if True:
+            #for meshN, meshpoint in enumerate(meshpoints):
+                #lim = [[meshpointMin[j] + sigmadelta[j] * p_nest[j],
+                        #meshpointMin[j] + sigmadelta[j] * (p_nest[j] + 1)]
+                        #for j in range(self.dim)]
+                ##fsum += nquad(self.fError, lim, opts=Options)
+                #fsum += nquad(self.fError, lim)[0]
+                #print("fsum(%s) = %s)"%(meshN, fsum))
+
+#            for meshN, meshpoint in enumerate(meshpoints):
+#                p_nest, fsum_mesh = meshpoint
+#                p = [meshpointMin[j] + sigmadelta[j] * p_nest[j] for j in range(self.dim)]
+#                point = []
+#                for j in range(len(self.hillCs[0].s)):
+#                    point.append(p[j] + sigmadelta[j] * random.random())
+#                #meshpoints[meshN][1] += self.fError(point)
+#                fsum += self.fError(point)
+            #if i + 1  % 10 == 0:
+            #if True:
+                #fsum = sum(fsum_mesh for _, fsum_mesh in meshpoints)
+                #with open("./MCconv.csv", "a") as wf:
+                    #wf.write('%s, %s, %s\n'%(hillN, (i+1) * len(meshpoints), fsum * term))
+                    #wf.write('%s, %s, %s\n'%(hillN, (i+1) * len(meshpoints), fsum * term / (i + 1)))
+            #if (i+1) * len(meshpoints) > 10000000:
+                #break
+        #fsum = sum(fsum_mesh for _, fsum_mesh in meshpoints)
+        term = np.log(fsum * term ) * self.const.betainv
+        return term
+
+#        for j in range(len(self.hillCs[0].s)):
+#            term *= lim[j][1] - lim[j][0]
+#        #for i in range(10000000):
+#        for i in range(5000000):
+#            point = []
+#            for j in range(len(self.hillCs[0].s)):
+#                point.append(random.uniform(lim[j][0],lim[j][1]))
+#            fsum += self.fError(point)
+#            if i % 10000 == 0:
+#                with open("./MCconv.csv", "a") as wf:
+#                    wf.write('%s, %s, %s\n'%(hillN, i, fsum * term / (i + 1)))
+#        term = np.log(fsum * term / (i + 1)) * self.const.betainv
+        #term = np.log(fsum * term / (i + 1)) + self.const.WT_Biasfactor_ffactor * self.const.beta
+
+        #Options = []
+        #for _ in range(len(self.hillCs[0].s)):
+            #Options.append({'epsabs': 1.0e-1, 'epsrel': 1.0e-1})
+        #term = nquad(self.fError, lim, opts=Options)
+        #term = np.log(term[0]) + self.const.WT_Biasfactor_ffactor * self.const.beta
+#        return term
+
+
+#        for i in range(10000, len(self.hillCs), 10000):
+#            if self.rank == self.root:
+#                lim = []
+#                for j in range(len(self.hillCs[0].s)):
+#                    lim.append([min(hillC.s[j] for hillC in self.hillCs[:i]) - sigmadelta[j],
+#                            max(hillC.s[j] for hillC in self.hillCs[:i]) + sigmadelta[j]])
+#            else:
+#                lim = None
+#            if self.const.calc_mpiQ:
+#                lim    = self.comm.bcast(lim,    root=0)
+#            if self.rank == self.root:
+#                self.i_untill = i
+#            else:
+#                self.i_untill = i % self.size
+#            Options = []
+#            for _ in range(len(self.hillCs[0].s)):
+#                Options.append({'epsabs': 1.0e-3, 'epsrel': 1.0e-3})
+#            term = nquad(self.fError, lim, opts=Options)
+#            #term = np.log(term) 
+#            term = np.log(term[0]) + self.const.WT_Biasfactor_ffactor * self.const.beta
+#            if self.rank == self.root:
+#                print('%s ; %s'%(i, term))
+#            with open("./fError.csv", "w") as wf:
+#                wf.write('%s, %s\n'%(i, term))
+    def fError(self, xdamp):
+        x = np.array(xdamp)
+        #returnf = - self.f(x) * self.const.WT_Biasfactor_ffactor * self.const.beta
+        returnf = - self.f(x) * self.const.beta
+        #returnf = self.f(x) * self.const.beta
+        #print(returnf)
+        returnf = np.exp(returnf) - 1.0
+        #returnf = np.exp(returnf)
+        #returnf =  np.exp(- self.f(x)) - 1.0
+        #if 0.0001 < returnf:
+           #print(returnf, flush = True)
+        return returnf
+#        returnf = 0.0
+#        for i, hillC in enumerate(self.hillCs):
+#            if self.rank == self.root:
+#                if i % self.size != self.rank:
+#                    continue
+#            returnf += hillC.f(x)
+#            if i == self.i_untill:
+#                if self.const.calc_mpiQ:
+#                    returnfg = self.comm.gather(returnf, root=0)
+#                    if self.rank == self.root:
+#                        returnf  = 0
+#                        for returnfdamp in returnfg:
+#                            returnf += returnfdamp
+#                        f_conv = np.exp(- returnf) - 1.0
+#                        if 0.00001 < f_conv:
+#                            print(f_conv, flush = True)
+#                    else:
+#                        f_conv = None
+#                    f_conv = self.comm.bcast(f_conv, root=0)
+#                else:
+#                    f_conv = np.exp(- returnf)
+#                #f_conv = - returnf * self.const.WT_Biasfactor_ffactor * self.const.beta
+#                #print(f_conv)
+#                #f_conv = np.exp(f_conv)
+#                #print('%s, %s'%(x, f_conv))
+#                #f_conv = np.exp(- returnf)
+#                return f_conv
+    def grad(self, x, debagQ = False, ADDQ = False):
         if self.const.calc_cupyQ:
-            returngrad = self.grad_cupy(x)
+            returngrad = self.grad_cupy(x, ADDQ)
         elif self.const.gridQ:
             returngrad = self.grad_grid(x)
         elif self.const.calc_mpiQ:
@@ -647,25 +887,36 @@ class Metad_result(object):
                 grad_xmax = grad_xmax[0]
             returngrad += (x_min[i] - x[i]) / self.const.grid_bin * (grad_xmin - grad_xmax)
         return returngrad
-    def grad_cupy(self, x):
+    def grad_cupy(self, x, ADDQ):
         if self.rank == self.root:
-            dlist_cupy = self.const.cp.zeros((len(x), len(self.hillCs)))
-            if self.const.periodicQ:
-                dpoint_i, dis_sqlist = self.dist_forgrad_kernel0(x[0], self.slistall[0], self.sigmainvlistall[0], self.const.periodicmin, self.const.periodicmax)
+            if ADDQ:
+                _hlist = self.h_part
+                _slist = self.slist_part
+                _sigmainvlist = self.sigmainvlist_part
+                hillClength = self.hillClength
             else:
-                dpoint_i, dis_sqlist = self.dist_forgrad_kernel0(x[0], self.slistall[0], self.sigmainvlistall[0])
+                _hlist = self.h_cupy
+                _slist = self.slistall
+                _sigmainvlist = self.sigmainvlistall
+                hillClength = len(self.hillCs)
+            dlist_cupy = self.const.cp.zeros((len(x), hillClength))
+            if self.const.periodicQ:
+                #dpoint_i, dis_sqlist = self.dist_forgrad_kernel0(x[0], self.slistall[0], self.sigmainvlistall[0], self.const.periodicmin, self.const.periodicmax)
+                dpoint_i, dis_sqlist = self.dist_forgrad_kernel0(x[0], _slist[0], _sigmainvlist[0], self.const.periodicmin, self.const.periodicmax)
+            else:
+                dpoint_i, dis_sqlist = self.dist_forgrad_kernel0(x[0], _slist[0], _sigmainvlist[0])
 
             dlist_cupy[0] = dpoint_i
             for i in range(1, len(x)):
                 if self.const.periodicQ:
                     dpoint_i, dis_sqlist = self.dist_forgrad_kernel(
-                        x[i], self.slistall[i], self.sigmainvlistall[i], dis_sqlist, self.const.periodicmin, self.const.periodicmax)
+                        x[i], _slist[i], _sigmainvlist[i], dis_sqlist, self.const.periodicmin, self.const.periodicmax)
                 else:
                     dpoint_i, dis_sqlist = self.dist_forgrad_kernel(
-                        x[i], self.slistall[i], self.sigmainvlistall[i], dis_sqlist)
+                        x[i], _slist[i], _sigmainvlist[i], dis_sqlist)
                 dlist_cupy[i] = dpoint_i
             dlist_cupy    =   dlist_cupy.transpose()
-            fresult_cupy  =   self.f_kernel(dis_sqlist, self.h_cupy)
+            fresult_cupy  =   self.f_kernel(dis_sqlist, _hlist)
             gradlist_cupy =   self.const.cp.dot(fresult_cupy, dlist_cupy)
             returngrad    = - self.const.cp.asnumpy(gradlist_cupy)
         else:

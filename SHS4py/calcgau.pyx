@@ -118,10 +118,68 @@ cpdef DTYPE_t IOE(np.ndarray nADD, np.ndarray nADDneibor, np.ndarray SQ, DTYPE_t
         DTYPE_t deltaTH, cosdamp
     deltaTH = angle_SHS(nADD, nADDneibor, SQ)
     if deltaTH <= np.pi * 0.5:
-        cosdamp = np.cos(deltaTH)
+        #cosdamp = np.cos(deltaTH)
+        cosdamp = cosADD_SHS(nADD, nADDneibor, SQ)
         return ADDfeM * cosdamp * cosdamp * cosdamp
     else:
         return 0.0
+cpdef np.ndarray IOE_grad(np.ndarray nADD, np.ndarray nADDneibor, np.ndarray SQ_inv, DTYPE_t ADDfeM, DTYPE_t r):
+    cdef:
+        DTYPE_t deltaTH, deltaTH_eps, cosdamp, xydot, IOE_center
+        np.ndarray q_x, q_y, returngrad, qx_i
+    #eps     = np.sqrt(np.finfo(float).eps)
+    eps     = 1.0e-4
+    q_x     = np.dot(SQ_inv, nADD)
+    q_y     = np.dot(SQ_inv, nADDneibor)
+    deltaTH = angle(q_x, q_y)
+    returngrad = np.zeros(len(nADD))
+    if deltaTH <= np.pi * 0.5:
+        #cosdamp    = np.cos(deltaTH)
+        cosdamp    = cosADD(q_x, q_y)
+        IOE_center = - 3.0 * ADDfeM * cosdamp * cosdamp * np.sqrt(1.0 - cosdamp * cosdamp)
+        for i in range(len(nADD)):
+            qx_i          = copy.copy(q_x)
+            qx_i[i]      += eps
+            deltaTH_eps   = angle(qx_i, q_y)
+            returngrad[i] = IOE_center * (deltaTH_eps - deltaTH) / eps
+
+
+        #xydot      = np.dot(q_x, q_y)
+        #IOE_center = cosdamp * cosdamp * cosdamp
+        #for i in range(len(nADD)):
+            #qx_i     = copy.copy(q_x)
+            #qx_i[i] += eps
+            #deltaTH  = angle(qx_i, q_y)
+            #cosdamp  = np.cos(deltaTH)
+            #cosdamp  = cosADD(qx_i,q_y)
+            #IOE_eps  = cosdamp * cosdamp * cosdamp
+            #returngrad[i] = ADDfeM * (IOE_eps - IOE_center) / eps
+#        cosdamp = np.cos(deltaTH)
+#        xydot   = np.dot(q_x, q_y)
+#        for i in range(len(nADD)):
+#            returngrad[i]  = q_y[i] * r * r
+#            #returngrad[i] -= 2.0 * q_x[i] * xydot
+#            returngrad[i] -= q_x[i] * xydot
+#        returngrad *= ADDfeM * cosdamp * cosdamp
+    return returngrad
+cpdef np.ndarray delx_deltheta(DTYPE_t r, thetalist, int theta_i):
+    cdef:
+        np.ndarray Dqlist
+        DTYPE_t a_k, theta
+        int i
+    Dqlist = np.array([r for _ in range(len(thetalist) + 1)])
+    a_k = 1.0
+    for i, theta in enumerate(thetalist):
+        if i == theta_i:
+            Dqlist[i] *= - a_k * np.sin(theta)
+            a_k *= np.cos(theta)
+        else:
+            Dqlist[i] *= a_k * np.cos(theta)
+            a_k *= np.sin(theta)
+        if i < theta_i:
+            Dqlist[i] *= 0.0
+    Dqlist[-1] *= a_k
+    return Dqlist
 cpdef DTYPE_t angle_SHS(np.ndarray nADD, np.ndarray nADDneibor, np.ndarray SQ_inv):
     cdef:
         np.ndarray q_x, q_y
@@ -146,6 +204,25 @@ cpdef DTYPE_t angle(np.ndarray x, np.ndarray y):
     elif _cos < -1:
         return np.pi
     return np.arccos(_cos)
+cpdef DTYPE_t cosADD_SHS(np.ndarray nADD, np.ndarray nADDneibor, np.ndarray SQ_inv):
+    cdef:
+        np.ndarray q_x, q_y
+        int i, j
+    q_x = np.dot(SQ_inv, nADD)
+    q_y = np.dot(SQ_inv, nADDneibor)
+    return cosADD(q_x, q_y)
+cpdef DTYPE_t cosADD(np.ndarray x, np.ndarray y):
+    cdef:
+        int i
+        DTYPE_t dot_xy, norm_x, norm_y
+    dot_xy = 0.0
+    norm_x = 0.0
+    norm_y = 0.0
+    for i in range(len(x)):
+        dot_xy += x[i] * y[i]
+        norm_x += x[i] * x[i]
+        norm_y += y[i] * y[i]
+    return dot_xy / np.sqrt(norm_x * norm_y)
 cpdef np.ndarray SuperSphere_cartesian( DTYPE_t A, np.ndarray thetalist, np.ndarray SQ, int dim):
     cdef:
         int i
