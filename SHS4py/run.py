@@ -7,7 +7,7 @@
 
 import os
 import SHS4py
-from SHS4py import VESanalyzer, mkconst
+from SHS4py import metaDanalyzer, mkconst
 import numpy as np
 import random
 
@@ -17,26 +17,22 @@ def main():
     constC = constClass()
     #constC.initialpointN      = 100
     constC.initialpointN       = 0
-    #constC.calc_cupyQ          = True
-    constC.cythonQ             = True
-    constC.calc_mpiQ           = True
-    constC.use_jacQ            = True
+    constC.calc_cupyQ          = False
+    constC.cythonQ             = False
+    constC.calc_mpiQ           = False
+    constC.use_jacQ            = False
     constC. IOEsphereA_initial = 0.02
     constC.IOEsphereA_dist     = 0.01
     constC.deltas0 = 0.10
     constC.deltas  = 0.05
-    constC.lADDnQ              = True
-    constC.IOEl                = 8
-
-    constC.coeffPickNlist                = [300000]
-    #constC.coeffabsmin  = 1.0e-2
+    #constC.lADDnQ              = True
+    #constC.IOEl                = 8
 
     constC.periodicQ = True
     constC.periodicmax = [ np.pi for _ in range(20)]
     constC.periodicmin = [-np.pi for _ in range(20)]
 
     constC.x0randomQ = True
-    #constC.x0randomQ = False
     if constC.calc_mpiQ:
         from mpi4py import MPI
         comm = MPI.COMM_WORLD
@@ -57,30 +53,49 @@ def main():
         with open("./jobfiles_meta/constants.txt", "w") as wf:
             wf.write(constC.writestr)
 
-    plumedpath = './plumedVES.dat'
-    VESclass = SHS4py.VESanalyzer.VESpotential(plumedpath, constC, rank, root, size, comm)
+    hillpath = './HILLS'
+    metaD  = SHS2py.metaDanalyzer.Metad_result(hillpath, constC)
     initialpointlist = []
-#    for line in open('./COLVAR'):
-#        if '#' in line:
-#            continue
-#        x = line.replace('\n','').split(' ')
-#        #print(x)
-#        initialpointlist.append(np.array(x[2:], dtype = float))
-#    initialpointlist = random.sample(initialpointlist, k = constC.initialpointN)
-    #print(initialpointlist)
-
-    #for line in open("../VES2D_200ns/jobfiles_meta/eqlist.csv"):
-    #for line in open("./jobfiles_meta.back1/eqlist.csv"):
-        #if "#" in line:
+    #for line in open('./COLVAR'):
+        #if '#' in line:
             #continue
-        #line = line.split(",")
-        #initialpointlist.append(np.array(line[1:-1], dtype = float))
-    #print(initialpointlist[0])
+        #x = line.replace('\n','').split(' ')
+        #initialpointlist.append(np.array(x[2:], dtype = float))
+    #initialpointlist = random.sample(initialpointlist, k = constC.initialpointN)
 
-
-    SHS4py.SHSearch(VESclass.f, VESclass.grad, VESclass.hessian,
-            importinitialpointQ = False, initialpoints = initialpointlist, 
-            SHSrank = rank, SHSroot = root, SHSsize = size, SHScomm = comm,
-            const = constC)
+    if constC.initialpointN == 0:
+        initialpointlist_gather = []
+    else:
+        if size != 1:
+            hillD = constC.initialpointN // size
+            if hillD != 0:
+                hillD = len(metaD.hillCs) // (constC.initialpointN // size)
+            #hillD = len(metaD.hillCs) // size
+        else:
+            hillD = len(metaD.hillCs) // (constC.initialpointN)
+            #hillD = len(metaD.hillCs) // size
+        initialpointlist = []
+        if hillD != 0:
+            for hillC in metaD.hillCs[::hillD]:
+                initialpointlist.append(hillC.s)
+        if size != 1:
+            initialpointlist= comm.gather(initialpointlist, root=0)
+            if rank == root:
+                initialpointlist_gather = []
+                for initialpointlist_chunk in initialpointlist:
+                    initialpointlist_gather.extend(initialpointlist_chunk)
+            else:
+                initialpointlist_gather = None
+            initialpointlist_gather = comm.bcast(initialpointlist_gather, root = 0)
+        else:
+            initialpointlist_gather = initialpointlist
+    for line in open("./plumed.dat"):
+        if "HEIGHT" in line:
+            line = line.split("=")
+            height = line[-1].replace("\n","")
+    SHS2py.SHSearch(metaD.f, metaD.grad, metaD.hessian,
+            importinitialpointQ = False, initialpoints = initialpointlist_gather,
+            SHSrank = rank, SHSroot = root, SHScomm = comm,
+            optdigTH = - constC.digThreshold * float(height), const = constC)
 if __name__ == "__main__":
     main()

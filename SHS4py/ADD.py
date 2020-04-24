@@ -801,7 +801,14 @@ def Opt_hyper_sphere(ADDths, f, grad, eqpoint, eigNlist, eigVlist, IOEsphereA, I
                 bifADDths = []
 
                 #print("ADD_IOE = %s"%ADDth.ADD_IOE)
-                if ADDth.ADD_IOE < 0.0 and const.chkBifurcationQ and not ADDth.findTSQ:
+                #if ADDth.ADD_IOE < 0.0 and const.chkBifurcationQ and not ADDth.findTSQ:
+                calcbifQ = False
+                if ADDth.ADD_IOE < 0.0 and not ADDth.findTSQ:
+                    if const.chkBifurcationQ:
+                        calcbifQ = True
+                    elif const.chkinitialTSQ  and sphereN == 0:
+                        calcbifQ = True
+                if calcbifQ:
                     bifQ, returnoptQ, _ADDoptQ, _ADDremoveQ, bifADDths = chkBifurcation(
                             f, grad, eqpoint, IOEsphereA, A_eq, ADDth, ADDths, const, 
                             sphereN, eigVlist, eigNlist, dim, SHSrank, SHSroot)

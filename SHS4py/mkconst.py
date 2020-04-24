@@ -108,7 +108,7 @@ def main(constC):
     if not "grid_max" in _keylist:
         constC.grid_max = 5.0
     if not "grid_bin" in _keylist:
-        constC.grid_bin = 1000 
+        constC.grid_bin = 1000
 
     if not "periodicQ" in _keylist:
         constC.periodicQ = False
@@ -123,7 +123,7 @@ def main(constC):
     if constC.calc_cupyQ:
         if not "cp" in _keylist:
             import cupy as cp
-            constC.cp = cp 
+            constC.cp = cp
     if not "GPUgatherQ" in _keylist:
         constC.GPUgatherQ = False
 
@@ -136,12 +136,7 @@ def main(constC):
             from . import calcgau
         except ImportError:
             import calcgau
-        try:
-            from . import calcVES
-        except ImportError:
-            import calcVES
         constC.calcgau = calcgau
-        constC.calcVES = calcVES
         include_dirs = [np.get_include()]
     if not "PBmetaDQ" in _keylist:
         constC.PBmetaDQ = False
@@ -161,12 +156,15 @@ def main(constC):
 
     if not "coeffPickN" in _keylist:
         constC.coeffPickN = False
-
+    if not "coeffPickNlist" in _keylist:
+        constC.coeffPickNlist = False
     if not "coeffabsmin" in _keylist:
         constC.coeffabsmin = 0.0
 
     if not "chkBifurcationQ" in _keylist:
         constC.chkBifurcationQ = False
+    if not "chkinitialTSQ" in _keylist:
+        constC.chkinitialTSQ = False
     if not "bifucationTH" in _keylist:
         constC.bifucationTH = np.pi / 8.0
     if not "bifucation_eigTH" in _keylist:
