@@ -15,24 +15,30 @@ class constClass():
     pass
 def main():
     constC = constClass()
-    #constC.initialpointN      = 100
-    constC.initialpointN       = 0
-    constC.calc_cupyQ          = False
-    constC.cythonQ             = False
-    constC.calc_mpiQ           = False
-    constC.use_jacQ            = False
+    constC.initialpointN      = 100
+    #constC.initialpointN       = 0
+    constC.calc_cupyQ          = False # Will you use cupy or not?
+    constC.cythonQ             = False # Will you use cython or not?
+    constC.calc_mpiQ           = False # Will you use mpi4py or not?
     constC. IOEsphereA_initial = 0.02
     constC.IOEsphereA_dist     = 0.01
     constC.deltas0 = 0.10
     constC.deltas  = 0.05
-    #constC.lADDnQ              = True
-    #constC.IOEl                = 8
+    #constC.lADDnQ              = True # Will you use l-ADD-n method?
+    #constC.IOEl                = 8 # the number of l-ADD-n to find TS point.
 
-    constC.periodicQ = True
+    constC.WellTempairedQ = False     # well-tempaired or not?
+    Temp           = 298.0            # tempeture (K)
+    k_B            = 1.38065e-26      # Boltzmann constant (kJ / K)
+    N_A            = 6.002214e23      # Avogadro constant (mol^-1)
+    constC.betainv = Temp * k_B * N_A # 1/beta (kJ / mol)
+    constC.beta    = 1.0 / constC.betainv
+
+    constC.periodicQ = True # Is the CVs are periodic?
     constC.periodicmax = [ np.pi for _ in range(20)]
     constC.periodicmin = [-np.pi for _ in range(20)]
 
-    constC.x0randomQ = True
+    constC.x0randomQ = True # Please set True to find ADDs on each SH.
     if constC.calc_mpiQ:
         from mpi4py import MPI
         comm = MPI.COMM_WORLD

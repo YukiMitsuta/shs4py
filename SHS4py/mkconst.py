@@ -94,7 +94,7 @@ def main(constC):
         constC.WellTempairedQ = False
     if constC.WellTempairedQ:
         if not "WT_Biasfactor" in _keylist:
-            constC.WT_Biasfactor  = 6
+            constC.WT_Biasfactor  = 1
         if not "WT_Biasfactor_ffactor" in _keylist:
             constC.WT_Biasfactor_ffactor  = constC.WT_Biasfactor / (constC.WT_Biasfactor - 1.0)
 
@@ -173,7 +173,8 @@ def main(constC):
         constC.s_bif0 = np.pi / 8.0
     if not "s_bif" in _keylist:
         constC.s_bif = 0.01
-
+    if not "abslist" in _keylist:
+        constC.abslist = [False for _ in range(100)]
 
     constC.writestr  = ""
     constC.writestr += "systemname            = %s\n"%constC.systemname
