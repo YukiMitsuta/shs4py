@@ -351,3 +351,61 @@ def exportconnectionlist_exclusion(tspointname, eqpointname, const):
     with open("%s/jobfiles_meta/connections.csv"%const.pwdpath, "a") as wf:
         wf.write("%s, %s\n"%(tspointname, eqpointname))
     lock.release()
+def chksamepoint_exportlist(pointtype, eqlist, tslist, point, f_point, const):
+    dmin = 1.0e30
+    disQ = [False]
+    headline = "#%sname, "%pointtype
+    headline += "CV, ..., "
+    headline += "FE (kJ/mol)\n"
+    if pointtype == "EQ":
+        eqlistpath = "%s/jobfiles_meta/eqlist.csv"%const.pwdpath
+        eqlist = exportlist_exclusion(eqlistpath, eqlist, headline, const)
+        beforepointlist = eqlist
+    elif pointtype == "TS":
+        tslistpath = "%s/jobfiles_meta/tslist.csv"%const.pwdpath
+        tslist = exportlist_exclusion(tslistpath, tslist, headline, const)
+        beforepointlist = tslist
+    else:
+        print("ERROR; pointtype(%s) is not EQ or TS"%pointtype)
+        exit()
+    for beforepoint in beforepointlist:
+        beforepoint = beforepoint[1:-1]
+        beforepoint = functions.periodicpoint(beforepoint, const, point)
+        dis = beforepoint - point
+        if type(const.sameEQthreshold) is float:
+            dis = max([abs(x) for x in dis])
+            if dis < dmin:
+                dmin = copy.copy(dis)
+        elif type(const.sameEQthreshold) is list:
+            disQ = [ abs(x) < const.sameEQthreshold[i] for i,x in enumerate(dis)]
+            if all(disQ):
+                break
+    if type(const.sameEQthreshold) is float:
+        if const.sameEQthreshold < dmin:
+            disQ = True
+        else:
+            disQ = False
+    elif type(const.sameEQthreshold) is list:
+        if all(disQ):
+            disQ = False
+        else:
+            disQ = True
+    else:
+        print("ERROR; const.sameEQthreshold is not float or list")
+        eqlist  = False
+        disQ = False
+    if disQ:
+        Pnum  = mkdir_exclusion(pointtype, 1, const)
+        pointname = "{0}{1:0>4}".format(pointtype, Pnum)
+        if pointtype == "EQ":
+            eqlist.append([pointname] + list(point) + [f_point])
+            eqlistpath = "%s/jobfiles_meta/eqlist.csv"%const.pwdpath
+            eqlist = exportlist_exclusion(eqlistpath, eqlist, headline, const)
+        elif pointtype == "TS":
+            tslist.append([pointname] + list(point) + [f_point])
+            tslistpath = "%s/jobfiles_meta/tslist.csv"%const.pwdpath
+            tslist = exportlist_exclusion(tslistpath, tslist, headline, const)
+        print("%s is found"%pointname, flush=True)
+    else:
+        print("calculated point")
+    return eqlist, tslist
