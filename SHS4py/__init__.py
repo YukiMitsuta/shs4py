@@ -18,7 +18,7 @@ from . import mkconst, functions, IOpack
 from . import OPT, ADD, MinimumPath
 class constClass():
     pass
-def SHSearch(f, grad, hessian, 
+def SHSearch(f, grad, hessian,
         importinitialpointQ = True, initialpoints = None, initialTSpoints = [],
         SHSrank = 0, SHSroot = 0, SHSsize = 1, SHScomm = None, optdigTH = False,
         eigNth  = - 1.0e30, const = False, metaDclass = False):
@@ -34,8 +34,10 @@ def SHSearch(f, grad, hessian,
         SHSrank             : rank of MPI
         SHSroot             : root rank of MPI
         SHScomm             : communicate class of mpi4py
-        optdigTH            : the threshold of potential 
+        optdigTH            : the threshold of potential
                                 (in metadynamics calculation, the area f(x) < optdigTH as confidence)
+        eigNth              : threshold of eigen value of hessian on EQ and TS point
+                                because the points that have small eigen valule, which mean the plaine area, cannot apply SHS
         const               : class of constants
     """
     global IOpack
@@ -280,7 +282,7 @@ def SHSearch(f, grad, hessian,
                         if 0.0 < min(eigNlist):
                             eqlist, tslist = IOpack.chksamepoint_exportlist(
                                     "EQ", eqlist, tslist, eqpoint, f_eqpoint, const)
-        
+
                     elif eigNlist[1] < 0.0:
                          if SHSrank == SHSroot:
                              print("this point is not ts point", flush = True)

@@ -116,7 +116,7 @@ def main(constC):
     if not "grid_max" in _keylist:
         constC.grid_max = 5.0
     if not "grid_bin" in _keylist:
-        constC.grid_bin = 1000 
+        constC.grid_bin = 1000
 
     if not "periodicQ" in _keylist:
         constC.periodicQ = False
@@ -131,7 +131,7 @@ def main(constC):
     if constC.calc_cupyQ:
         if not "cp" in _keylist:
             import cupy as cp
-            constC.cp = cp 
+            constC.cp = cp
     if not "GPUgatherQ" in _keylist:
         constC.GPUgatherQ = False
 
@@ -144,12 +144,7 @@ def main(constC):
             from . import calcgau
         except ImportError:
             import calcgau
-        try:
-            from . import calcVES
-        except ImportError:
-            import calcVES
         constC.calcgau = calcgau
-        constC.calcVES = calcVES
         include_dirs = [np.get_include()]
     if not "PBmetaDQ" in _keylist:
         constC.PBmetaDQ = False
