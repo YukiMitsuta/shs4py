@@ -166,9 +166,9 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
             x1   = x_0 + Ddimerdamp * Egrad
             x2   = x_0 - Ddimerdamp * Egrad
             tau  = (x1 - x2) * 0.5
-            if SHSrank == SHSroot:
-                print("in PoppinsDimer, phiturnN over 100", flush = True)
-                print("Ddimer is changed to %s"%Ddimerdamp, flush = True)
+            #if SHSrank == SHSroot:
+                #print("in PoppinsDimer, phiturnN over 100", flush = True)
+                #print("Ddimer is changed to %s"%Ddimerdamp, flush = True)
             if Ddimerdamp <= const.Ddimer_max:
                 continue
             #return False
@@ -215,15 +215,15 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
             x1   = x_0 + Ddimerdamp * Egrad
             x2   = x_0 - Ddimerdamp * Egrad
             tau  = (x1 - x2) * 0.5
-            if SHSrank == SHSroot:
-                print("resultx = 0", flush = True)
-                print("Ddimer is changed to %s"%Ddimerdamp, flush = True)
+            #if SHSrank == SHSroot:
+                #print("resultx = 0", flush = True)
+                #print("Ddimer is changed to %s"%Ddimerdamp, flush = True)
             if Ddimerdamp <= const.Ddimer_max:
                 continue
         x_0 = functions.periodicpoint(x_0, const)
         f_0 = f(x_0)
-        if SHSrank == SHSroot:
-            print("resultx, f_0 = %s, %s"%(resultx, f_0))
+        #if SHSrank == SHSroot:
+            #print("resultx, f_0 = %s, %s"%(resultx, f_0))
         graddamp     = grad(x_0)
         if SHSrank == SHSroot:
             print("%s: norm(grad) = %s"%(whileN, np.linalg.norm(graddamp)), flush = True)
@@ -236,11 +236,11 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
         #if result.x <= const.threshold:
         if resultx < 1.0e-5:
             hessinv      = hessian(x_0)
-            if SHSrank == SHSroot:
-                print("Try Newton-Raphthon", flush = True)
-                if len(hessinv) == 1:
-                    print("ERROR: hessinv.ndim = 1", flush = True)
-                    print("hessinv = %s"%hessinv,    flush= True)
+            #if SHSrank == SHSroot:
+                #print("Try Newton-Raphthon", flush = True)
+                #if len(hessinv) == 1:
+                    #print("ERROR: hessinv.ndim = 1", flush = True)
+                    #print("hessinv = %s"%hessinv,    flush= True)
             hessinv      = np.linalg.inv(hessinv)
             graddamp     = grad(x_0)
             dim          = len(x_0)
@@ -251,9 +251,9 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
                     #x_0[i] -= hessinv[i, j] * graddamp[j]
                     x_delta[i] -= hessinv[i, j] * graddamp[j]
             f_next = f(x_0 + x_delta)
-            if SHSrank == SHSroot:
-                print("norm(x_delta) = %s"%np.linalg.norm(x_delta))
-                print("f_next        = %s"%f_next)
+            #if SHSrank == SHSroot:
+                #print("norm(x_delta) = %s"%np.linalg.norm(x_delta))
+                #print("f_next        = %s"%f_next)
             if not optdigTH is False:
                 if optdigTH < f_next:
                     if SHSrank == SHSroot:
@@ -304,9 +304,9 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
             x1   = x_0 + Ddimerdamp * Egrad
             x2   = x_0 - Ddimerdamp * Egrad
             tau  = (x1 - x2) * 0.5
-            if SHSrank == SHSroot:
-                print("Ddimer is changed to %s"%Ddimerdamp)
-                print("x_delta_ini = %s"%np.linalg.norm(x_0 - initialpoint), flush = True)
+            #if SHSrank == SHSroot:
+                #print("Ddimer is changed to %s"%Ddimerdamp)
+                #print("x_delta_ini = %s"%np.linalg.norm(x_0 - initialpoint), flush = True)
 
     else:
         if SHSrank == SHSroot:

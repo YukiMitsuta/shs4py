@@ -12,10 +12,10 @@ import numpy as np
 def main(constC):
     _keylist = constC.__dict__.keys()
     if not "betainv" in _keylist:
-        Temp           = 298.0            # tempeture (K)
+        constC.Temp    = 298.0            # tempeture (K)
         k_B            = 1.38065e-26      # Boltzmann constant (kJ / K)
         N_A            = 6.002214e23      # Avogadro constant (mol^-1)
-        constC.betainv = Temp * k_B * N_A # 1/beta (kJ / mol)
+        constC.betainv = constC.Temp * k_B * N_A # 1/beta (kJ / mol)
         constC.beta    = 1.0 / constC.betainv
 
     if not "systemname" in _keylist:
@@ -72,6 +72,12 @@ def main(constC):
         constC.wallmax         = np.array([ 1.0e30 for _ in range(100)])
     if not "wallmin" in _keylist:
         constC.wallmin         = np.array([ -1.0e30    for _ in range(100)])
+    if not "EQwallmax" in _keylist:
+        constC.EQwallmax         = np.array([ 1.0e30 for _ in range(100)])
+    if not "EQwallmin" in _keylist:
+        constC.EQwallmin         = np.array([-1.0e30 for _ in range(100)])
+    if not "abslist" in _keylist:
+        constC.abslist           = np.array([ False  for _ in range(100)])
 
     if not "Ddimer" in _keylist:
         constC.Ddimer          = 0.05
@@ -94,7 +100,7 @@ def main(constC):
         constC.WellTempairedQ = False
     if constC.WellTempairedQ:
         if not "WT_Biasfactor" in _keylist:
-            constC.WT_Biasfactor  = 1
+            constC.WT_Biasfactor  = 6
         if not "WT_Biasfactor_ffactor" in _keylist:
             constC.WT_Biasfactor_ffactor  = constC.WT_Biasfactor / (constC.WT_Biasfactor - 1.0)
 
@@ -103,12 +109,14 @@ def main(constC):
         constC.initialpointN = 100
     if not "gridQ" in _keylist:
         constC.gridQ = False
+    if not "grid_importQ" in _keylist:
+        constC.grid_importQ = False
     if not "grid_min" in _keylist:
         constC.grid_min = 0.0
     if not "grid_max" in _keylist:
         constC.grid_max = 5.0
     if not "grid_bin" in _keylist:
-        constC.grid_bin = 1000
+        constC.grid_bin = 1000 
 
     if not "periodicQ" in _keylist:
         constC.periodicQ = False
@@ -123,7 +131,7 @@ def main(constC):
     if constC.calc_cupyQ:
         if not "cp" in _keylist:
             import cupy as cp
-            constC.cp = cp
+            constC.cp = cp 
     if not "GPUgatherQ" in _keylist:
         constC.GPUgatherQ = False
 
@@ -136,7 +144,12 @@ def main(constC):
             from . import calcgau
         except ImportError:
             import calcgau
+        try:
+            from . import calcVES
+        except ImportError:
+            import calcVES
         constC.calcgau = calcgau
+        constC.calcVES = calcVES
         include_dirs = [np.get_include()]
     if not "PBmetaDQ" in _keylist:
         constC.PBmetaDQ = False
@@ -179,6 +192,7 @@ def main(constC):
     constC.writestr  = ""
     constC.writestr += "systemname            = %s\n"%constC.systemname
     constC.writestr += "pwdpath               = %s\n"%constC.pwdpath
+    constC.writestr += "Temp                  = %s\n"%constC.Temp
     constC.writestr += "lockfilepath          = %s\n"%constC.lockfilepath
     constC.writestr += "lockfilepath_UIlist   = %s\n"%constC.lockfilepath_UIlist
     constC.writestr += "threshold             = %s\n"%constC.threshold

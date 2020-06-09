@@ -432,15 +432,48 @@ def main(eqpoint, f, grad, hessian, dirname, optdigTH, SHSrank, SHSroot, SHScomm
         print("IOEsphereA_initial, IOEsphereA_r = %s, %s"%(IOEsphereA_initial, IOEsphereA_r), flush = True)
     if SHSrank == SHSroot:
         with open("./sphere.txt", "a")  as wf:
-            wf.write("-*-"*10 + "\n")
-            wf.write("start initial optimization\n")
-            wf.write("-*-"*10 + "\n")
+            wf.write("-*-"*10 + "\nstart initial optimization\n" + "-*-"*10 + "\n")
     IOEsphereA_before = 0.0
 
     lenADDthsbefore = 0
     IDnum   = 0
     sphereN = 0
     if len(picklelist) == 0:
+        start0sphereQ = True
+    else:
+        start0sphereQ = False
+        if SHSrank == SHSroot:
+            try:
+                while sphereN < 10000:
+                    ADDthpiclename = "./ADDths%s.pickle"%sphereN
+                    if os.path.exists(ADDthpiclename):
+                        with open(ADDthpiclename, mode="rb") as pic:
+                            ADDths = pickle.load(pic)
+                        break
+                    sphereN += 1
+                with open("./IOEsphereA.pickle", mode="rb") as pic:
+                    IOEsphereA = pickle.load(pic)
+                if os.path.exists("./TSinitialpoints.pickle"):
+                    with open("./TSinitialpoints.pickle", mode="rb") as pic:
+                        TSinitialpoints = pickle.load(pic)
+                else:
+                    TSinitialpoints = []
+            except EOFError:
+                #ADDths = []
+                #IOEsphereA = IOEsphereA_initial
+                #TSinitialpoints = []
+                start0sphereQ = True
+        else:
+            ADDths = None
+            IOEsphereA = None
+            TSinitialpoints = None
+        if const.calc_mpiQ:
+            ADDths = const.SHScomm.bcast(ADDths, root=0)
+            IOEsphereA = const.SHScomm.bcast(IOEsphereA, root=0)
+            TSinitialpoints = const.SHScomm.bcast(TSinitialpoints, root=0)
+            start0sphereQ = const.SHScomm.bcast(start0sphereQ, root=0)
+    #if len(picklelist) == 0:
+    if start0sphereQ:
         ADDths = []
         if const.lADDnQ:
             eigVnum = const.IOEl_forcollect
@@ -492,32 +525,8 @@ def main(eqpoint, f, grad, hessian, dirname, optdigTH, SHSrank, SHSroot, SHScomm
         TSinitialpoints = []
         for ADDth in ADDths:
             ADDth.findTSQ = False
-    else:
-        if SHSrank == SHSroot:
-            while sphereN < 1000:
-                ADDthpiclename = "./ADDths%s.pickle"%sphereN
-                if os.path.exists(ADDthpiclename):
-                    with open(ADDthpiclename, mode="rb") as pic:
-                        ADDths = pickle.load(pic)
-                    break
-                sphereN += 1
-            with open("./IOEsphereA.pickle", mode="rb") as pic:
-                IOEsphereA = pickle.load(pic)
-            if os.path.exists("./TSinitialpoints.pickle"):
-                with open("./TSinitialpoints.pickle", mode="rb") as pic:
-                    TSinitialpoints = pickle.load(pic)
-            else:
-                TSinitialpoints = []
-        else:
-            ADDths = None
-            IOEsphereA = None
-            TSinitialpoints = None
-        if const.calc_mpiQ:
-            ADDths = const.SHScomm.bcast(ADDths, root=0)
-            IOEsphereA = const.SHScomm.bcast(IOEsphereA, root=0)
-            TSinitialpoints = const.SHScomm.bcast(TSinitialpoints, root=0)
 
-    while sphereN < 1000:
+    while sphereN < 10000:
         if SHSrank == SHSroot:
             beforepiclename = "./ADDths%s.pickle"%(sphereN-1)
             if os.path.exists(beforepiclename):
@@ -537,10 +546,17 @@ def main(eqpoint, f, grad, hessian, dirname, optdigTH, SHSrank, SHSroot, SHScomm
             exit()
         sphereN += 1
         if SHSrank == SHSroot:
+            #with open("./sphere.txt", "a")  as wf:
+                #wf.write("*"*50 + "\n")
+                #wf.write("sphereN = %s\n"%sphereN)
+                #wf.write("*"*50 + "\n")
+            spherestr  = ""
+            spherestr += "*"*50 + "\n"
+            spherestr += "sphereN = %s\n"%sphereN
+            spherestr += "*"*50 + "\n"
             with open("./sphere.txt", "a")  as wf:
-                wf.write("*"*50 + "\n")
-                wf.write("sphereN = %s\n"%sphereN)
-                wf.write("*"*50 + "\n")
+                wf.write(spherestr)
+            spherestr = False
         ADDths, IOEsphereA = Opt_hyper_sphere(
                 ADDths, f, grad, eqpoint, eigNlist, eigVlist, IOEsphereA,
                 IOEsphereA_r, A_eq, sphereN, dim, SHSrank, SHSroot, const)
@@ -628,9 +644,10 @@ def Opt_hyper_sphere(ADDths, f, grad, eqpoint, eigNlist, eigVlist, IOEsphereA, I
     turnNrecall   = 0
     newADDths     = []
     nonoptlist    = []
+    spherestr = False
     while any(opt_calcQlist):
         optturnN += 1
-        if optturnN == 1000:
+        if optturnN == 10000:
             if SHSrank == SHSroot:
                 print("optturnN = %s: break"%optturnN, flush = True)
             if sphereN == 0:
@@ -651,11 +668,25 @@ def Opt_hyper_sphere(ADDths, f, grad, eqpoint, eigNlist, eigVlist, IOEsphereA, I
                 break
             continue
         if SHSrank == SHSroot:
-            with open("./sphere.txt", "a")  as wf:
-                wf.write("=" * 50 + "\n")
-                wf.write("optturnN = %s\n"%optturnN)
-                wf.write("%s\n"%datetime.datetime.now())
-                wf.write("=" * 50 + "\n")
+            #with open("./sphere.txt", "a")  as wf:
+                #wf.write("=" * 50 + "\n")
+                #wf.write("optturnN = %s\n"%optturnN)
+                #wf.write("%s\n"%datetime.datetime.now())
+                #wf.write("=" * 50 + "\n")
+            if spherestr is not False:
+                if optturnN % 10 == 0:
+                    with open("./sphere.txt", "a")  as wf:
+                        wf.write(spherestr)
+                    spherestr  = "=" * 50 + "\n"
+                else:
+                    spherestr += "=" * 50 + "\n"
+            else:
+                spherestr  = "=" * 50 + "\n"
+
+            #spherestr  = "=" * 50 + "\n"
+            spherestr += "optturnN = %s\n"%optturnN
+            spherestr += "%s\n"%datetime.datetime.now()
+            spherestr += "=" * 50 + "\n"
         newADDths = []
         for ADDth in ADDths:
             #if not ADDth.ADDoptQ:
@@ -671,9 +702,9 @@ def Opt_hyper_sphere(ADDths, f, grad, eqpoint, eigNlist, eigVlist, IOEsphereA, I
         bifQ = False
         for ADDth in ADDths:
             if ADDth.ADDremoveQ:
-                if SHSrank == SHSroot:
-                    with open("./sphere.txt", "a")  as wf:
-                        wf.write("%s is skipped\n"%ADDth.IDnum)
+                #if SHSrank == SHSroot:
+                    #with open("./sphere.txt", "a")  as wf:
+                        #wf.write("%s is skipped\n"%ADDth.IDnum)
                 ADDth.ADDoptQ = False
                 continue
             if const.x0randomQ:
@@ -792,10 +823,12 @@ def Opt_hyper_sphere(ADDths, f, grad, eqpoint, eigNlist, eigVlist, IOEsphereA, I
 #                    exit()
                 ADDth.ADDoptQ = False
                 if SHSrank == SHSroot:
-                    with open("./sphere.txt", "a")  as wf:
-                        wf.write("(IDnum, ADD, ADD_IOE), time = (%s, % 5.3f, % 5.3f), % 5.3f\n"%(
-                                ADDth.IDnum, ADDth.ADD, ADDth.ADD_IOE, time3 - time2))
+                    #with open("./sphere.txt", "a")  as wf:
+                        #wf.write("(IDnum, ADD, ADD_IOE), time = (%s, % 5.3f, % 5.3f), % 5.3f\n"%(
+                                #ADDth.IDnum, ADDth.ADD, ADDth.ADD_IOE, time3 - time2))
                     #print("IOE = % 5.4f"%(ADDth.ADD_IOE - ADDth.ADD), flush = True)
+                    spherestr += "(IDnum, ADD, ADD_IOE), time = (%s, % 5.3f, % 5.3f), % 5.3f\n"%(
+                                ADDth.IDnum, ADDth.ADD, ADDth.ADD_IOE, time3 - time2)
                 returnoptQ = False
                 bifQ = False
                 bifADDths = []
@@ -817,8 +850,9 @@ def Opt_hyper_sphere(ADDths, f, grad, eqpoint, eigNlist, eigVlist, IOEsphereA, I
                     ADDth.ADDremoveQ = _ADDremoveQ 
                     if ADDth.ADDremoveQ:
                         if SHSrank == SHSroot:
-                            with open("./sphere.txt", "a")  as wf:
-                                wf.write("%s is removed for bifurcation\n"%ADDth.IDnum)
+                            #with open("./sphere.txt", "a")  as wf:
+                                #wf.write("%s is removed for bifurcation\n"%ADDth.IDnum)
+                            spherestr += "%s is removed for bifurcation\n"%ADDth.IDnum
                         #exit()
 
                     for beforeADDth in ADDths:
@@ -854,8 +888,9 @@ def Opt_hyper_sphere(ADDths, f, grad, eqpoint, eigNlist, eigVlist, IOEsphereA, I
                 for newADDth in newADDths:
                     if functions.angle_SHS(ADDth.nADD, newADDth.nADD, ADDth.SQ_inv, const) < 0.01:
                         if SHSrank == SHSroot:
-                            with open("./sphere.txt", "a")  as wf:
-                                wf.write("angle of %s and %s is smaller than 0.01:break\n"%(ADDth.IDnum, newADDth.IDnum))
+                            #with open("./sphere.txt", "a")  as wf:
+                                #wf.write("angle of %s and %s is smaller than 0.01:break\n"%(ADDth.IDnum, newADDth.IDnum))
+                            spherestr += "angle of %s and %s is smaller than 0.01:break\n"%(ADDth.IDnum, newADDth.IDnum)
                         ADDth.ADDremoveQ = True
                         ADDth.ADDoptQ    = False
                         break
@@ -875,8 +910,9 @@ def Opt_hyper_sphere(ADDths, f, grad, eqpoint, eigNlist, eigVlist, IOEsphereA, I
                     if SHSrank == SHSroot:
                         print("There is repeat of calculation",         flush = True)
                         print("IOEsphereA is changed as %s"%IOEsphereA, flush = True)
-                        with open("./sphere.txt", "a")  as wf:
-                            wf.write("IOEsphereA is changed as %s\n"%IOEsphereA)
+                        #with open("./sphere.txt", "a")  as wf:
+                            #wf.write("IOEsphereA is changed as %s\n"%IOEsphereA)
+                        spherestr += "IOEsphereA is changed as %s\n"%IOEsphereA
                     nonoptlist = []
                     for ADDth in ADDths:
                         ADDth.thetalist  = functions.calctheta(ADDth.nADD, eigVlist, eigNlist)
@@ -892,6 +928,9 @@ def Opt_hyper_sphere(ADDths, f, grad, eqpoint, eigNlist, eigVlist, IOEsphereA, I
                 writeline += "\n"
             with open("./ADDpoints.csv", "a")  as wf:
                     wf.write(writeline)
+    if SHSrank == SHSroot:
+        with open("./sphere.txt", "a")  as wf:
+            wf.write(spherestr)
     return ADDths, IOEsphereA
 def updateCupyData(metaDclass, ADDth, IOEsphereA, eqpoint, eigNlist, eigVlist, const):
     return
@@ -987,7 +1026,7 @@ def chkBifurcation(f, grad, eqpoint, IOEsphereA, A_eq, ADDth, ADDths, const,
         #print("x = %s"%xstr)
         #print("(IDnum, ADD, ADD_IOE), time = (%s, % 5.3f, % 5.3f), % 5.3f"%(
                 #ADDth.IDnum, ADDth.ADD, ADDth.ADD_IOE, time3 - time2), flush = True)
-        print(writeline, flush = True)
+        #print(writeline, flush = True)
         print(" this point is not Equiblium on SH; chk bifurcation", flush = True)
     if sphereN == 0:
         csvname = "./initialTS.csv"

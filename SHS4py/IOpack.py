@@ -26,6 +26,16 @@ from . import functions
 
 import fasteners
 
+def importlist_exclusion(fname, const):
+    lockfilepath_list = const.lockfilepath + "_" + fname.split("/")[-1]
+    if not os.path.exists(lockfilepath_list):
+        with open(lockfilepath_list, "w") as wf:
+            wf.write("")
+    lock = fasteners.InterProcessLock(lockfilepath_list)
+    lock.acquire()
+    returnlist = importlist(fname)
+    lock.release()
+    return returnlist
 def importlist(fname):
     """
     import data file(fname) and return the list of data
@@ -101,7 +111,7 @@ def mkdir_exclusion(dirkind, fileN, const):
     if not os.path.exists(lockfilepath_mkdir):
         with open(lockfilepath_mkdir, "w") as wf:
             wf.write("")
-    print("Waiting mkdir_exclusion", flush = True)
+    #print("Waiting mkdir_exclusion", flush = True)
     lock = fasteners.InterProcessLock(lockfilepath_mkdir)
     lock.acquire()
     for num in range(1,100000):
@@ -112,7 +122,7 @@ def mkdir_exclusion(dirkind, fileN, const):
                     os.mkdir("{0}/jobfiles_meta/{1}{2:0>4}".format(const.tmppath, dirkind, num + i))
             break
     lock.release()
-    print("End mkdir_exclusion", flush = True)
+    #print("End mkdir_exclusion", flush = True)
     return num
 def exportlist_share(fname, newlist, headline):
     """
@@ -175,12 +185,40 @@ def exportlist_share(fname, newlist, headline):
             with open(fname, "w") as wf:
                 wf.write(headline)
         return returnlist
+    returnlist = newlist
+    beforelistLength = 0
     if os.path.exists(fname):
-        sharedlist = open(fname).readlines()
-        for line in sharedlist:
+        #print("Import %s"%fname, flush = True)
+#        sharedlist = open(fname).readlines()
+#        for line in sharedlist:
+#            if line[0] == "#":
+#                continue
+#            beforelistLength += 1
+#            samepointQ = False
+#            for returnpoint in returnlist:
+#                if returnpoint[0] in line:
+#                    samepointQ = True
+#                    break
+#            if samepointQ:
+#                continue
+#            if "," in line:
+#                line = line.replace("\n", "").split(",")
+#            else:
+#                line = line.replace("\n", "").split()
+#            l = []
+#            for a in line:
+#                try:
+#                    a = float(a)
+#                except:
+#                    pass
+#                    #if "window" in a:
+#                        #a = windowdic[a]
+#                l.append(a)
+        sharedlist = []
+        sharedNAMEset = set()
+        for line in open(fname):
             if line[0] == "#":
                 continue
-            #line = line.replace("\n", "").split()
             if "," in line:
                 line = line.replace("\n", "").split(",")
             else:
@@ -191,39 +229,61 @@ def exportlist_share(fname, newlist, headline):
                     a = float(a)
                 except:
                     pass
-                    #if "window" in a:
-                        #a = windowdic[a]
                 l.append(a)
-            returnlist.append(l)
-    returnlistdamp = copy.copy(returnlist)
-    for line in newlist:
-        l = []
-        for a in line:
-            try:
-                a = float(a)
-            except:
-                #if "window" in a:
-                    #a = windowdic[a]
-                pass
-            l.append(a)
-        for returnline in returnlist:
-            if returnline[0] == l[0]:
-                if "MFEPconnections.csv" in fname:
+            sharedlist.append(l)
+            sharedNAMEset.add(l[0])
+        #print("sharedlist, returnlist = %s, %s"%(len(sharedlist), len(returnlist)))
+        beforelistLength = len(sharedlist)
+
+        NAMEset = sharedNAMEset - set([ a[0] for a in returnlist])
+        addNAMEset = set([ a[0] for a in returnlist]) - sharedNAMEset
+        #print("len(NAMEset) = %s"%len(NAMEset))
+        if len(NAMEset) != 0:
+            for l in sharedlist:
+                if not l[0] in NAMEset:
                     continue
-                break
-        else:
-            returnlistdamp.append(l)
+                #if len(returunlist) == 0:
+                if True:
+                    returnlist.append(l)
+                else:
+                    for i, returnpoint in enumerate(returnlist):
+                        if l[-1] < returnpoint[-1]:
+                            returnlist.insert(i, l)
+                            break
+        #print("end Import %s"%fname, flush = True)
+#    returnlistdamp = copy.copy(returnlist)
+#    for line in newlist:
+#        l = []
+#        for a in line:
+#            try:
+#                a = float(a)
+#            except:
+#                #if "window" in a:
+#                    #a = windowdic[a]
+#                pass
+#            l.append(a)
+#        for returnline in returnlist:
+#            if returnline[0] == l[0]:
+#                if "MFEPconnections.csv" in fname:
+#                    continue
+#                break
+#        else:
+#            returnlistdamp.append(l)
     #if "MFEP" in fname or "ts" in fname:
         #returnlist = returnlistdamp
     #else:
         #returnlist = networkFE(returnlistdamp)
     #if "eqlist.dat" in fname:
-    if False:
-        returnlist = networkFE(returnlistdamp)
+    #if False:
+        #returnlist = networkFE(returnlistdamp)
+    #else:
+        #returnlist = returnlistdamp
     else:
-        returnlist = returnlistdamp
+        print("there is not %s"%fname)
     if returnlist is False:
         return False
+    if beforelistLength == len(returnlist):
+        return returnlist
     if len(returnlist) != 0:
         if "csv" in fname:
             formatlinelist = []
@@ -248,37 +308,68 @@ def exportlist_share(fname, newlist, headline):
                     formatline += "{0[%s]}  "%i
             formatline += "\n"
     returnlist = sorted(returnlist, key = lambda x:x[-1])
-    writeline  = ""
-    writeline += headline
-    for returnline in returnlist:
-        if "csv" in fname:
-            formatlinelist = []
-            for i, x in enumerate(returnline):
-                if i == 0:
-                    if isinstance(x, str):
-                        formatlinelist.append("{0[%s]}"%i)
-                    elif isinstance(x, float):
-                        formatlinelist.append("{0[%s]: #3.8f}"%i)
-                else:
-                    formatlinelist.append("{0[%s]:< #3.8f}"%i)
-            formatline = ",".join(formatlinelist)
-            formatline += "\n"
-            #print(returnlist)
-            #print(formatline)
-        else:
-            formatline = ""
-            for i in range(len(returnline)):
-                if isinstance(returnline[i], float):
-                    formatline += "{0[%s]: #3.8f}  "%i
-                elif isinstance(returnline[i], int):
-                    formatline += "{0[%s]: 5d}  "%i
-                else:
-                    formatline += "{0[%s]}  "%i
-            formatline += "\n"
-
-        writeline += formatline.format(returnline)
-    with open(fname, "w") as wf:
-        wf.write(writeline)
+    if len(returnlist) < 10:
+        writeline  = ""
+        writeline += headline
+        for returnline in returnlist:
+            if "csv" in fname:
+                formatlinelist = []
+                for i, x in enumerate(returnline):
+                    if i == 0:
+                        if isinstance(x, str):
+                            formatlinelist.append("{0[%s]}"%i)
+                        elif isinstance(x, float):
+                            formatlinelist.append("{0[%s]: #3.8f}"%i)
+                    else:
+                        formatlinelist.append("{0[%s]:< #3.8f}"%i)
+                formatline = ",".join(formatlinelist)
+                formatline += "\n"
+                #print(returnlist)
+                #print(formatline)
+            else:
+                formatline = ""
+                for i in range(len(returnline)):
+                    if isinstance(returnline[i], float):
+                        formatline += "{0[%s]: #3.8f}  "%i
+                    elif isinstance(returnline[i], int):
+                        formatline += "{0[%s]: 5d}  "%i
+                    else:
+                        formatline += "{0[%s]}  "%i
+                formatline += "\n"
+    
+            writeline += formatline.format(returnline)
+        with open(fname, "w") as wf:
+            wf.write(writeline)
+    else:
+        for returnline in returnlist:
+            if not returnline[0] in addNAMEset:
+                continue
+            if "csv" in fname:
+                formatlinelist = []
+                for i, x in enumerate(returnline):
+                    if i == 0:
+                        if isinstance(x, str):
+                            formatlinelist.append("{0[%s]}"%i)
+                        elif isinstance(x, float):
+                            formatlinelist.append("{0[%s]: #3.8f}"%i)
+                    else:
+                        formatlinelist.append("{0[%s]:< #3.8f}"%i)
+                formatline = ",".join(formatlinelist)
+                formatline += "\n"
+                #print(returnlist)
+                #print(formatline)
+            else:
+                formatline = ""
+                for i in range(len(returnline)):
+                    if isinstance(returnline[i], float):
+                        formatline += "{0[%s]: #3.8f}  "%i
+                    elif isinstance(returnline[i], int):
+                        formatline += "{0[%s]: 5d}  "%i
+                    else:
+                        formatline += "{0[%s]}  "%i
+                formatline += "\n"
+            with open(fname, "a") as wf:
+                wf.write(formatline.format(returnline))
     return returnlist
 def findEQpath_exclusion(eqlist, const):
     lockfilepath = const.lockfilepath + "_eqpath"
@@ -290,8 +381,16 @@ def findEQpath_exclusion(eqlist, const):
     lock.acquire()
     dirname = False
     eqpoint = False
+    eqlist = sorted(eqlist, key = lambda x:x[-1])
     for eqpointlist in eqlist:
         eqpoint = eqpointlist[1:-1]
+        walloutQ = False
+        for i in range(len(eqpoint)):
+            if eqpoint[i] < const.EQwallmin[i] or const.EQwallmax[i] < eqpoint[i]:
+                walloutQ = True
+                break
+        if walloutQ:
+            continue
         dirname = "{0}/jobfiles_meta/{1}".format(const.pwdpath, eqpointlist[0])
         if os.path.exists("%s/end.txt"%dirname):
             continue
@@ -392,17 +491,31 @@ def chksamepoint_exportlist(pointtype, eqlist, tslist, point, f_point, const):
             disQ = True
     else:
         print("ERROR; const.sameEQthreshold is not float or list")
-        eqlist  = False
-        disQ = False
+        eqlist = False
+        disQ   = False
     if disQ:
         Pnum  = mkdir_exclusion(pointtype, 1, const)
         pointname = "{0}{1:0>4}".format(pointtype, Pnum)
         if pointtype == "EQ":
-            eqlist.append([pointname] + list(point) + [f_point])
+            #if len(eqlist) == 0:
+            if True:
+                eqlist.append([pointname] + list(point) + [f_point])
+            #else:
+                #for i, eqlistpoint in enumerate(eqlist):
+                    #if f_point < eqlistpoint[-1]:
+                        #eqlist.insert(i, [pointname] + list(point) + [f_point])
+                        #break
             eqlistpath = "%s/jobfiles_meta/eqlist.csv"%const.pwdpath
             eqlist = exportlist_exclusion(eqlistpath, eqlist, headline, const)
         elif pointtype == "TS":
-            tslist.append([pointname] + list(point) + [f_point])
+            #if len(tslist) == 0:
+            if True:
+                tslist.append([pointname] + list(point) + [f_point])
+            else:
+                for i, tslistpoint in enumerate(eqlist):
+                    if f_point < tslistpoint[-1]:
+                        tslist.insert(i, [pointname] + list(point) + [f_point])
+                        break
             tslistpath = "%s/jobfiles_meta/tslist.csv"%const.pwdpath
             tslist = exportlist_exclusion(tslistpath, tslist, headline, const)
         print("%s is found"%pointname, flush=True)

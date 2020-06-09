@@ -18,7 +18,7 @@ from . import mkconst, functions, IOpack
 from . import OPT, ADD, MinimumPath
 class constClass():
     pass
-def SHSearch(f, grad, hessian,
+def SHSearch(f, grad, hessian, 
         importinitialpointQ = True, initialpoints = None, initialTSpoints = [],
         SHSrank = 0, SHSroot = 0, SHSsize = 1, SHScomm = None, optdigTH = False,
         eigNth  = - 1.0e30, const = False, metaDclass = False):
@@ -34,10 +34,8 @@ def SHSearch(f, grad, hessian,
         SHSrank             : rank of MPI
         SHSroot             : root rank of MPI
         SHScomm             : communicate class of mpi4py
-        optdigTH            : the threshold of potential
+        optdigTH            : the threshold of potential 
                                 (in metadynamics calculation, the area f(x) < optdigTH as confidence)
-        eigNth              : threshold of eigen value of hessian on EQ and TS point
-                                because the points that have small eigen valule, which mean the plain area, cannot apply SHS
         const               : class of constants
     """
     global IOpack
@@ -58,15 +56,17 @@ def SHSearch(f, grad, hessian,
                 print("Error in SHSearch: initialpoints is not defined.", flush = True)
                 #functions.TARGZandexit()
         eqlistpath = "%s/jobfiles_meta/eqlist.csv"%const.pwdpath
+        tslistpath = "%s/jobfiles_meta/tslist.csv"%const.pwdpath
         if not os.path.exists(eqlistpath):
             with open(eqlistpath, "w") as wf:
                 wf.write("")
-        eqlist = IOpack.importlist(eqlistpath)
-        tslistpath = "%s/jobfiles_meta/tslist.csv"%const.pwdpath
+        #eqlist = IOpack.importlist(eqlistpath)
+        eqlist = IOpack.importlist_exclusion(eqlistpath, const)
         if not os.path.exists(tslistpath):
             with open(tslistpath, "w") as wf:
                 wf.write("")
-        tslist = IOpack.importlist(tslistpath)
+        #tslist = IOpack.importlist(tslistpath)
+        tslist = IOpack.importlist_exclusion(tslistpath, const)
     else:
         eqlist        = None
         initialpoints = None
@@ -219,7 +219,8 @@ def SHSearch(f, grad, hessian,
             if not os.path.exists(tslistpath):
                 with open(tslistpath, "w") as wf:
                     wf.write("")
-            tslist = IOpack.importlist(tslistpath)
+            #tslist = IOpack.importlist(tslistpath)
+            tslist = IOpack.importlist_exclusion(tslistpath, const)
             #eqlist = sorted(eqlist, key = lambda x:x[-1])
             eqpoint, dirname = IOpack.findEQpath_exclusion(eqlist, const)
 
@@ -279,7 +280,7 @@ def SHSearch(f, grad, hessian,
                         if 0.0 < min(eigNlist):
                             eqlist, tslist = IOpack.chksamepoint_exportlist(
                                     "EQ", eqlist, tslist, eqpoint, f_eqpoint, const)
-
+        
                     elif eigNlist[1] < 0.0:
                          if SHSrank == SHSroot:
                              print("this point is not ts point", flush = True)
@@ -366,8 +367,14 @@ def SHSearch(f, grad, hessian,
             #with open("%s/end.txt"%dirname, "w") as wf:
                 #wf.write("calculated")
             IOpack.writeEND_exclusion(dirname, "TS", const)
-            tslist = IOpack.importlist(tslistpath)
+            #tslist = IOpack.importlist(tslistpath)
             #IOpack.exportlist(tslistpath, tslist)
+            #tslist = []
+            #headline = "#TSname, "
+            #headline += "CV, ..., "
+            #headline += "FE (kJ/mol)\n"
+            #tslist = IOpack.exportlist_exclusion(tslistpath, tslist, headline, const)
+            tslist = IOpack.importlist_exclusion(tslistpath, const)
         else:
             tslist = None
         if const.calc_mpiQ:
@@ -452,8 +459,17 @@ def SHSearch(f, grad, hessian,
                             #with open("%s/jobfiles_meta/connections.csv"%const.pwdpath, "a") as wf:
                                 #wf.write("%s, %s\n"%(tspointlist[0], pointname))
                             IOpack.exportconnectionlist_exclusion(tspointlist[0], pointname, const)
-                            eqlist = IOpack.importlist(eqlistpath)
+                            #eqlist = IOpack.importlist(eqlistpath)
+                            #headline = "#EQname, "
+                            #headline += "CV, ..., "
+                            #headline += "FE (kJ/mol)\n"
+                            #eqlist = IOpack.exportlist_exclusion(eqlistpath, eqlist, headline, const)
+                            eqlist = IOpack.importlist_exclusion(eqlistpath, const)
                             eqlist.append([pointname] + list(eqpoint) + [f_eqpoint])
+                            #for i, eqlistpoint in enumerate(eqlist):
+                                #if f_eqpoint < eqlistpoint[-1]:
+                                    #eqlist.insert(i, [pointname] + list(eqpoint) + [f_eqpoint])
+                                    #break
                             #eqlist = sorted(eqlist, key = lambda x:x[-1])
                             #IOpack.exportlist(eqlistpath, eqlist)
                             headline = "#EQname, "
