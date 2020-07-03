@@ -33,6 +33,9 @@ def PoppinsMinimize(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, 
     PoppinsMinimize:      optimization of minimize EQ points by using L-BFGS-B
     """
 
+    gradinitial     = grad(initialpoint)
+    if np.linalg.norm(gradinitial) < const.threshold:
+        return initialpoint, 0.0
     boundlist = []
     if const.periodicQ:
         if type(const.periodicmin) is float:
@@ -229,6 +232,8 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
             print("%s: norm(grad) = %s"%(whileN, np.linalg.norm(graddamp)), flush = True)
         if np.linalg.norm(graddamp) < const.threshold:
             return x_0
+        elif optdigTH is False:
+            pass
         elif optdigTH < f_0:
             if SHSrank == SHSroot:
                 print("ERROR: %s: f(x_0) = %s over optdigTH(% 3.2f)"%(whileN, f_0, optdigTH))

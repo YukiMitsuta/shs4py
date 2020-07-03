@@ -398,9 +398,14 @@ def findEQpath_exclusion(eqlist, const):
             continue
         else:
             break
+    else:
+        dirname = False
+        eqpoint = False
     if not dirname is False:
         with open("%s/running.txt"%dirname, "w") as wf:
             wf.write("running")
+    else:
+        eqpoint = False
     lock.release()
     print("End findEQpath_exclusion", flush = True)
     return eqpoint, dirname
@@ -451,6 +456,13 @@ def exportconnectionlist_exclusion(tspointname, eqpointname, const):
         wf.write("%s, %s\n"%(tspointname, eqpointname))
     lock.release()
 def chksamepoint_exportlist(pointtype, eqlist, tslist, point, f_point, const):
+    lockfilepath = const.lockfilepath + "_chksamepoint"
+    if not os.path.exists(lockfilepath):
+        with open(lockfilepath, "w") as wf:
+            wf.write("")
+    #print("Waiting chkTSpath_exclusion", flush = True)
+    lock = fasteners.InterProcessLock(lockfilepath)
+    lock.acquire()
     dmin = 1.0e30
     disQ = [False]
     headline = "#%sname, "%pointtype
@@ -468,6 +480,7 @@ def chksamepoint_exportlist(pointtype, eqlist, tslist, point, f_point, const):
         print("ERROR; pointtype(%s) is not EQ or TS"%pointtype)
         exit()
     for beforepoint in beforepointlist:
+        beforepointname = beforepoint[0]
         beforepoint = beforepoint[1:-1]
         beforepoint = functions.periodicpoint(beforepoint, const, point)
         dis = beforepoint - point
@@ -475,9 +488,11 @@ def chksamepoint_exportlist(pointtype, eqlist, tslist, point, f_point, const):
             dis = max([abs(x) for x in dis])
             if dis < dmin:
                 dmin = copy.copy(dis)
+                pointname = copy.copy(beforepointname)
         elif type(const.sameEQthreshold) is list:
             disQ = [ abs(x) < const.sameEQthreshold[i] for i,x in enumerate(dis)]
             if all(disQ):
+                pointname = copy.copy(beforepointname)
                 break
     if type(const.sameEQthreshold) is float:
         if const.sameEQthreshold < dmin:
@@ -521,4 +536,5 @@ def chksamepoint_exportlist(pointtype, eqlist, tslist, point, f_point, const):
         print("%s is found"%pointname, flush=True)
     else:
         print("calculated point")
-    return eqlist, tslist
+    lock.release()
+    return eqlist, tslist, pointname
