@@ -36,7 +36,6 @@ def SHSearch(f, grad, hessian,
         SHScomm             : communicate class of mpi4py
         optdigTH            : the threshold of potential 
                                 (in metadynamics calculation, the area f(x) < optdigTH as confidence)
-        eigNth              : threshold of eigen value of hessian on EQ and TS point
         eigNth              : threshold of eigen value of hessian on EQ and TS point  
                                 because the points that have small eigen valule, which mean the plaine area, cannot apply SHS
         const               : class of constants
