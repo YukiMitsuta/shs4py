@@ -34,9 +34,10 @@ def SHSearch(f, grad, hessian,
         SHSrank             : rank of MPI
         SHSroot             : root rank of MPI
         SHScomm             : communicate class of mpi4py
-        optdigTH            : the threshold of potential
+        optdigTH            : the threshold of potential 
                                 (in metadynamics calculation, the area f(x) < optdigTH as confidence)
         eigNth              : threshold of eigen value of hessian on EQ and TS point
+        eigNth              : threshold of eigen value of hessian on EQ and TS point  
                                 because the points that have small eigen valule, which mean the plaine area, cannot apply SHS
         const               : class of constants
     """
@@ -467,11 +468,11 @@ def SHSearch(f, grad, hessian,
                 beforeeqpoint = functions.periodicpoint(nearEQpoint, const, eqpoint)
                 dis = beforeeqpoint - eqpoint
                 if type(const.sameEQthreshold) is float:
-                    dis = max([abs(x) for x in dis])
-                    if const.sameEQthreshold < dis:
-                        samepointQ = True
-                    else:
+                    disMax = max([abs(x) for x in dis])
+                    if const.sameEQthreshold < disMax:
                         samepointQ = False
+                    else:
+                        samepointQ = True
                 elif type(const.sameEQthreshold) is list:
                     samepointQ = all([ abs(x) < const.sameEQthreshold[i] for i,x in enumerate(dis)])
                 else:
@@ -482,6 +483,7 @@ def SHSearch(f, grad, hessian,
                     print("ERROR; the optimized point is too far from nearEQpoint! We propose you to change const.deltas.")
                     print("eqpoint = %s"%eqpoint)
                     print("nearEQpoint = %s"%nearEQpoint)
+                    print("dis = %s"%dis)
                     continue
 
                 EQhess = hessian(eqpoint)
