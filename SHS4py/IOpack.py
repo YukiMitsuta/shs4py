@@ -115,11 +115,11 @@ def mkdir_exclusion(dirkind, fileN, const):
     lock = fasteners.InterProcessLock(lockfilepath_mkdir)
     lock.acquire()
     for num in range(1,100000):
-        if os.path.exists("{0}/jobfiles_meta/{1}{2:0>4}".format(const.pwdpath, dirkind, num)) is False:
+        if os.path.exists("{0}/{1}/{2}{3:0>4}".format(const.pwdpath, const.jobfilepath, dirkind, num)) is False:
             for i in range(fileN):
-                os.mkdir("{0}/jobfiles_meta/{1}{2:0>4}".format(const.pwdpath, dirkind, num + i))
+                os.mkdir("{0}/{1}/{2}{3:0>4}".format(const.pwdpath, const.jobfilepath, dirkind, num + i))
                 if const.moveQ:
-                    os.mkdir("{0}/jobfiles_meta/{1}{2:0>4}".format(const.tmppath, dirkind, num + i))
+                    os.mkdir("{0}/{1}/{2}{3:0>4}".format(const.tmppath, const.jobfilepath, dirkind, num + i))
             break
     lock.release()
     #print("End mkdir_exclusion", flush = True)
@@ -311,6 +311,7 @@ def exportlist_share(fname, newlist, headline):
     if len(returnlist) < 10:
         writeline  = ""
         writeline += headline
+        #print(writeline)
         for returnline in returnlist:
             if "csv" in fname:
                 formatlinelist = []
@@ -324,8 +325,6 @@ def exportlist_share(fname, newlist, headline):
                         formatlinelist.append("{0[%s]:< #3.8f}"%i)
                 formatline = ",".join(formatlinelist)
                 formatline += "\n"
-                #print(returnlist)
-                #print(formatline)
             else:
                 formatline = ""
                 for i in range(len(returnline)):
@@ -356,8 +355,6 @@ def exportlist_share(fname, newlist, headline):
                         formatlinelist.append("{0[%s]:< #3.8f}"%i)
                 formatline = ",".join(formatlinelist)
                 formatline += "\n"
-                #print(returnlist)
-                #print(formatline)
             else:
                 formatline = ""
                 for i in range(len(returnline)):
@@ -391,7 +388,7 @@ def findEQpath_exclusion(eqlist, const):
                 break
         if walloutQ:
             continue
-        dirname = "{0}/jobfiles_meta/{1}".format(const.pwdpath, eqpointlist[0])
+        dirname = "{0}/{1}/{2}".format(const.pwdpath, const.jobfilepath, eqpointlist[0])
         if os.path.exists("%s/end.txt"%dirname):
             continue
         elif os.path.exists("%s/running.txt"%dirname):
@@ -420,7 +417,7 @@ def chkTSpath_exclusion(tslist, const):
     returntspointlist = False
     for tspointlist in tslist:
         tspoint = tspointlist[1:-1]
-        dirname = "{0}/jobfiles_meta/{1}".format(const.pwdpath, tspointlist[0])
+        dirname = "{0}/{1}/{2}".format(const.pwdpath, const.jobfilepath, tspointlist[0])
         if not os.path.exists("%s/end.txt"%dirname):
             if not os.path.exists("%s/running.txt"%dirname):
                 returntspointlist = tspointlist
@@ -452,7 +449,7 @@ def exportconnectionlist_exclusion(tspointname, eqpointname, const):
         wf.write("")
     lock = fasteners.InterProcessLock(lockfilepath_list)
     lock.acquire()
-    with open("%s/jobfiles_meta/connections.csv"%const.pwdpath, "a") as wf:
+    with open("%s/%s/connections.csv"%(const.pwdpath, const.jobfilepath), "a") as wf:
         wf.write("%s, %s\n"%(tspointname, eqpointname))
     lock.release()
 def chksamepoint_exportlist(pointtype, eqlist, tslist, point, f_point, const):
@@ -469,11 +466,11 @@ def chksamepoint_exportlist(pointtype, eqlist, tslist, point, f_point, const):
     headline += "CV, ..., "
     headline += "FE (kJ/mol)\n"
     if pointtype == "EQ":
-        eqlistpath = "%s/jobfiles_meta/eqlist.csv"%const.pwdpath
+        eqlistpath = "%s/%s/eqlist.csv"%(const.pwdpath, const.jobfilepath)
         eqlist = exportlist_exclusion(eqlistpath, eqlist, headline, const)
         beforepointlist = eqlist
     elif pointtype == "TS":
-        tslistpath = "%s/jobfiles_meta/tslist.csv"%const.pwdpath
+        tslistpath = "%s/%s/tslist.csv"%(const.pwdpath, const.jobfilepath)
         tslist = exportlist_exclusion(tslistpath, tslist, headline, const)
         beforepointlist = tslist
     else:
@@ -520,7 +517,7 @@ def chksamepoint_exportlist(pointtype, eqlist, tslist, point, f_point, const):
                     #if f_point < eqlistpoint[-1]:
                         #eqlist.insert(i, [pointname] + list(point) + [f_point])
                         #break
-            eqlistpath = "%s/jobfiles_meta/eqlist.csv"%const.pwdpath
+            eqlistpath = "%s/%s/eqlist.csv"%(const.pwdpath, const.jobfilepath)
             eqlist = exportlist_exclusion(eqlistpath, eqlist, headline, const)
         elif pointtype == "TS":
             #if len(tslist) == 0:
@@ -531,7 +528,7 @@ def chksamepoint_exportlist(pointtype, eqlist, tslist, point, f_point, const):
                     if f_point < tslistpoint[-1]:
                         tslist.insert(i, [pointname] + list(point) + [f_point])
                         break
-            tslistpath = "%s/jobfiles_meta/tslist.csv"%const.pwdpath
+            tslistpath = "%s/%s/tslist.csv"%(const.pwdpath, const.jobfilepath)
             tslist = exportlist_exclusion(tslistpath, tslist, headline, const)
         print("%s is found"%pointname, flush=True)
     else:

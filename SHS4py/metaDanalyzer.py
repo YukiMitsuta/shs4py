@@ -500,7 +500,7 @@ class Metad_result(object):
                     dis_sqlist = self.dist_forf_kernel(x[i], _slist[i], _sigmainvlist[i], dis_sqlist)
             returnf = self.const.cp.sum(self.f_kernel(dis_sqlist, _hlist))
             #returnfdamp = self.const.cp.sum(self.f_kernel(dis_sqlist, _hlist))
-            #returnf = float(returnfdamp)
+            returnf = float(returnf)
         else:
             returnf = None
         if self.const.calc_mpiQ:

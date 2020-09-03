@@ -18,6 +18,8 @@ def main(constC):
         constC.betainv = constC.Temp * k_B * N_A # 1/beta (kJ / mol)
         constC.beta    = 1.0 / constC.betainv
 
+    if not "jobfilepath" in _keylist:
+        constC.jobfilepath = "./jobfiles_meta/"
     if not "systemname" in _keylist:
         constC.systemname = "main"
 
@@ -144,7 +146,17 @@ def main(constC):
             from . import calcgau
         except ImportError:
             import calcgau
+        #try:
+            #from . import calcVES
+        #except ImportError:
+            #import calcVES
+        #try:
+            #from . import calcRCMC
+        #except ImportError:
+            #import calcRCMC
         constC.calcgau = calcgau
+        #constC.calcVES = calcVES
+        #constC.calcRCMC = calcRCMC
         include_dirs = [np.get_include()]
     if not "PBmetaDQ" in _keylist:
         constC.PBmetaDQ = False
@@ -181,8 +193,11 @@ def main(constC):
         constC.s_bif0 = np.pi / 8.0
     if not "s_bif" in _keylist:
         constC.s_bif = 0.01
-    if not "abslist" in _keylist:
-        constC.abslist = [False for _ in range(100)]
+
+    if not "CVfixQ" in _keylist:
+        constC.CVfixQ = False
+    if not "fixlist" in _keylist:
+        constC.fixlist = False    
 
     constC.writestr  = ""
     constC.writestr += "systemname            = %s\n"%constC.systemname
@@ -225,8 +240,4 @@ def main(constC):
     constC.writestr += "PBmetaDQ              = %s\n"%constC.PBmetaDQ
     constC.writestr += "exportADDpointsQ      = %s\n"%constC.exportADDpointsQ
 
-    #if not os.path.exists("./jobfiles_meta"):
-        #os.mkdir("./jobfiles_meta")
-    #with open("./jobfiles_meta/constants.txt", "w") as wf:
-        #wf.write(constC.writestr)
     return constC

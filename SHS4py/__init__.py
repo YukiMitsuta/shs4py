@@ -29,7 +29,7 @@ def SHSearch(f, grad, hessian,
         f                   : function to calculate potential as f(x)
         grad                : function to calculate gradient as grad(x)
         hessian             : function to calculate hessian as hessian(x)
-        importinitialpointQ : if true, initial points are imported from "%s/jobfiles_meta/initialpoint.csv"%const.pwdpath
+        importinitialpointQ : if true, initial points are imported from "%s/%s/initialpoint.csv"%(const.pwdpath, const.jobfilepath)
         initialpoints       : initial points of optimizations
         SHSrank             : rank of MPI
         SHSroot             : root rank of MPI
@@ -47,18 +47,18 @@ def SHSearch(f, grad, hessian,
 
     if SHSrank == SHSroot:
         print("start SHSearch", flush = True)
-        if not os.path.exists("jobfiles_meta"):
-            os.mkdir("jobfiles_meta")
+        if not os.path.exists(const.jobfilepath):
+            os.mkdir(const.jobfilepath)
         if importinitialpointQ:
-            importname = "%s/jobfiles_meta/initialpoint.csv"%const.pwdpath
+            importname = "%s/%s/initialpoint.csv"%(const.pwdpath, const.jobfilepath)
             print("importinitialpointQ = True: try read %s"%importname)
             initialpoints = IOpack.importlist(importname)
         else:
             if initialpoints is None:
                 print("Error in SHSearch: initialpoints is not defined.", flush = True)
                 #functions.TARGZandexit()
-        eqlistpath = "%s/jobfiles_meta/eqlist.csv"%const.pwdpath
-        tslistpath = "%s/jobfiles_meta/tslist.csv"%const.pwdpath
+        eqlistpath = "%s/%s/eqlist.csv"%(const.pwdpath, const.jobfilepath)
+        tslistpath = "%s/%s/tslist.csv"%(const.pwdpath, const.jobfilepath)
         if not os.path.exists(eqlistpath):
             with open(eqlistpath, "w") as wf:
                 wf.write("")
@@ -84,9 +84,9 @@ def SHSearch(f, grad, hessian,
         f_point = f(eqpoint)
         chkdigQ = True
         if optdigTH is not False:
-            if optdigTH < f_eqpoint:
+            if optdigTH < f_point:
                 if SHSrank == SHSroot:
-                    print("f_eqpoint(%s) is larger  than optdigTH(%s)"%(f_eqpoint, optdigTH), flush  = True)
+                    print("f_eqpoint(%s) is larger  than optdigTH(%s)"%(f_point, optdigTH), flush  = True)
                 chkdigQ = False
             if min(eigNlist) <= eigNth:
                 if SHSrank == SHSroot:
@@ -98,53 +98,6 @@ def SHSearch(f, grad, hessian,
                     eqlist, tslist, pointname = IOpack.chksamepoint_exportlist("EQ", eqlist, tslist, eqpoint, f_point, const)
                 elif 0.0 < eigNlist[1]:
                     eqlist, tslist, pointname = IOpack.chksamepoint_exportlist("TS", eqlist, tslist, eqpoint, f_point, const)
-#                    tspoint = eqpoint
-#                    f_ts    = f_eqpoint
-#                    dmin    = 1.0e30
-#                    disQ    = [False]
-#                    tslistpath = "%s/jobfiles_meta/tslist.csv"%const.pwdpath
-#                    headline = "#TSname, "
-#                    headline += "CV, ..., "
-#                    headline += "FE (kJ/mol)\n"
-#                    tslist = IOpack.exportlist_exclusion(tslistpath, tslist, headline, const)
-#                    for beforetspointlist in tslist:
-#                        beforetspoint = beforetspointlist[1:-1]
-#                        beforetspoint = functions.periodicpoint(beforetspoint, const, tspoint)
-#                        dis = beforetspoint - tspoint
-#                        if type(const.sameEQthreshold) is float:
-#                            dis = max([abs(x) for x in dis])
-#                            if dis < dmin:
-#                                dmin = copy.copy(dis)
-#                        elif type(const.sameEQthreshold) is list:
-#                            disQ = [ abs(x) < const.sameEQthreshold[i] for i,x in enumerate(dis)]
-#                            if all(disQ):
-#                                break
-#                    if type(const.sameEQthreshold) is float:
-#                        if const.sameEQthreshold < dmin:
-#                            disQ = True
-#                        else:
-#                            disQ = False
-#                    elif type(const.sameEQthreshold) is list:
-#                        if all(disQ):
-#                            disQ = False
-#                        else:
-#                            disQ = True
-#                    else:
-#                        print("ERROR; const.sameEQthreshold is not float or list")
-#                        eqlist  = False
-#                        disQ = False
-#                    if disQ:
-#                        TSnum  = IOpack.mkdir_exclusion("TS", 1, const)
-#                        pointname = "TS{0:0>4}".format(TSnum)
-#                        #print("find %s"%pointname)
-#                        tslist = IOpack.importlist(tslistpath)
-#                        tslist.append([pointname] + list(tspoint) + [f_ts])
-#                        #IOpack.exportlist(tslistpath, tslist)
-#                        headline = "#TSname, "
-#                        headline += "CV, ..., "
-#                        headline += "FE (kJ/mol)\n"
-#                        tslist = IOpack.exportlist_exclusion(tslistpath, tslist, headline, const)
-#                        print("%s is found"%pointname, flush = True)
                 else:
                     print("%s is not EQ or TS point: eigN = %s"%(eqpoint, eigNlist), flush = True)
             else:
@@ -155,44 +108,8 @@ def SHSearch(f, grad, hessian,
             tslist        = SHScomm.bcast(tslist, root = 0)
         if eqlist is False:
             exit()
-#        if SHSrank == SHSroot:
-#            #IOpack.exportlist(eqlistpath, eqlist)
-#            headline = "#EQname, "
-#            #for i in range(len(eqpoint)):
-#                #headline += "CV%s, "%i
-#            headline += "CV, ..., "
-#            headline += "FE (kJ/mol)\n"
-#            eqlist = IOpack.exportlist_exclusion(eqlistpath, eqlist, headline, const)
     initialTSpointsdamp = []
     for TSinitialpoint in initialTSpoints:
-#        for initialTSpointbefore in initialTSpointsdamp:
-#            beforepoint = functions.periodicpoint(initialTSpointbefore, const, TSinitialpoint)
-#            dis = beforepoint - TSinitialpoint
-#            if type(const.sameEQthreshold) is float:
-#                dis = max([abs(x) for x in dis])
-#                if dis < dmin:
-#                    dmin = copy.copy(dis)
-#            elif type(const.sameEQthreshold) is list:
-#                disQ = [ abs(x) < const.sameEQthreshold[i] for i,x in enumerate(dis)]
-#                if all(disQ):
-#                    break
-#        if type(const.sameEQthreshold) is float:
-#            if const.sameEQthreshold < dmin:
-#                disQ = True
-#            else:
-#                disQ = False
-#        elif type(const.sameEQthreshold) is list:
-#            if all(disQ):
-#                disQ = False
-#            else:
-#                disQ = True
-#        else:
-#            print("ERROR; const.sameEQthreshold is not float or list")
-#            disQ   = False
-#        if not disQ:
-#            continue
-#
-#        initialTSpointsdamp.append(TSinitialpoint)
         tspoint = OPT.PoppinsDimer(TSinitialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, const)
         if tspoint is False:
             continue
@@ -246,7 +163,7 @@ def SHSearch(f, grad, hessian,
     while True:
         eqpoint = None
         if SHSrank == SHSroot:
-            tslistpath = "%s/jobfiles_meta/tslist.csv"%const.pwdpath
+            tslistpath = "%s/%s/tslist.csv"%(const.pwdpath, const.jobfilepath)
             if not os.path.exists(tslistpath):
                 with open(tslistpath, "w") as wf:
                     wf.write("")
@@ -275,36 +192,6 @@ def SHSearch(f, grad, hessian,
             print("find %s TS initial points"%len(TSinitialpoints), flush = True)
         initialTSpointsdamp = []
         for TSinitialpoint in TSinitialpoints:
-#            disQ = False
-#            for initialTSpointbefore in initialTSpointsdamp:
-#                dmin    = 1.0e30
-#                beforepoint = functions.periodicpoint(initialTSpointbefore, const, TSinitialpoint)
-#                dis = beforepoint - TSinitialpoint
-#                if type(const.sameEQthreshold) is float:
-#                    dis = max([abs(x) for x in dis])
-#                    if dis < dmin:
-#                        dmin = copy.copy(dis)
-#                elif type(const.sameEQthreshold) is list:
-#                    disQ = [ abs(x) < const.sameEQthreshold[i] for i,x in enumerate(dis)]
-#                    if all(disQ):
-#                        break
-#            if type(const.sameEQthreshold) is float:
-#                if const.sameEQthreshold < dmin:
-#                    disQ = True
-#                else:
-#                    disQ = False
-#            elif type(const.sameEQthreshold) is list:
-#                if len(initialTSpointsdamp) == 0:
-#                    disQ = False
-#                elif all(disQ):
-#                    disQ = True
-#                else:
-#                    disQ = False
-#            else:
-#                print("ERROR; const.sameEQthreshold is not float or list")
-#                disQ   = False
-#            if disQ:
-#                continue
             initialTSpointsdamp.append(TSinitialpoint)
 
             if SHSrank == SHSroot:
@@ -368,51 +255,6 @@ def SHSearch(f, grad, hessian,
                 if SHSrank == SHSroot:
                     eqlist, tslist, pointname = IOpack.chksamepoint_exportlist(
                             "TS", eqlist, tslist, tspoint, f_ts, const)
-                    #print("tspoint = %s"%tspoint)
-#                    dmin = 1.0e30
-#                    tslist = IOpack.importlist(tslistpath)
-#                    disQ = [False]
-#                    tslist = IOpack.exportlist_exclusion(tslistpath, tslist, headline, const)
-#                    for beforetspointlist in tslist:
-#                        beforetspoint = beforetspointlist[1:-1]
-#                        beforetspoint = functions.periodicpoint(beforetspoint, const, tspoint)
-#                        dis = beforetspoint - tspoint
-#                        if type(const.sameEQthreshold) is float:
-#                            dis = max([abs(x) for x in dis])
-#                            if dis < dmin:
-#                                dmin = copy.copy(dis)
-#                        elif type(const.sameEQthreshold) is list:
-#                            disQ = [ abs(x) < const.sameEQthreshold[i] for i,x in enumerate(dis)]
-#                            if all(disQ):
-#                                break
-#                    if type(const.sameEQthreshold) is float:
-#                        if const.sameEQthreshold < dmin:
-#                            disQ = True
-#                        else:
-#                            disQ = False
-#                    elif type(const.sameEQthreshold) is list:
-#                        if all(disQ):
-#                            disQ = False
-#                        else:
-#                            disQ = True
-#                    else:
-#                        print("ERROR; const.sameEQthreshold is not float or list")
-#                        tslist  = False
-#                        disQ = False
-#                    if disQ:
-#                        EQnum  = IOpack.mkdir_exclusion("TS", 1, const)
-#                        pointname = "TS{0:0>4}".format(EQnum)
-#                        #print("find %s"%pointname)
-#                        tslist = IOpack.importlist(tslistpath)
-#                        tslist.append([pointname] + list(tspoint) + [f_ts])
-#                        headline = "#TSname, "
-#                        #for i in range(len(tspoint)):
-#                            #headline += "CV%s, "%i
-#                        headline += "CV, ..., "
-#                        headline += "FE (kJ/mol)\n"
-#                        tslist = IOpack.exportlist_exclusion(tslistpath, tslist, headline, const)
-#                        #IOpack.exportlist(tslistpath, tslist)
-#                        print("%s is found"%pointname, flush = True)
                 else:
                     eqlist = None
                     tslist = None
@@ -424,18 +266,7 @@ def SHSearch(f, grad, hessian,
                 if tslist is False:
                     exit()
         if SHSrank == SHSroot:
-            #if os.path.exists("%s/running.txt"%dirname):
-                #os.remove("%s/running.txt"%dirname)
-            #with open("%s/end.txt"%dirname, "w") as wf:
-                #wf.write("calculated")
             IOpack.writeEND_exclusion(dirname, "TS", const)
-            #tslist = IOpack.importlist(tslistpath)
-            #IOpack.exportlist(tslistpath, tslist)
-            #tslist = []
-            #headline = "#TSname, "
-            #headline += "CV, ..., "
-            #headline += "FE (kJ/mol)\n"
-            #tslist = IOpack.exportlist_exclusion(tslistpath, tslist, headline, const)
             tslist = IOpack.importlist_exclusion(tslistpath, const)
         else:
             tslist = None
@@ -457,7 +288,7 @@ def SHSearch(f, grad, hessian,
             if tspointlist is False:
                 break
             tspoint = tspointlist[1:-1]
-            dirname = "{0}/jobfiles_meta/{1}".format(const.pwdpath, tspointlist[0])
+            dirname = "{0}/{1}/{2}".format(const.pwdpath, const.jobfilepath, tspointlist[0])
             tspoint = np.array(tspoint)
             nearEQpoints = MinimumPath.main(tspoint, f, grad, hessian, dirname, SHSrank, SHSroot, SHScomm, const)
             for nearEQpoint in nearEQpoints:
@@ -507,70 +338,6 @@ def SHSearch(f, grad, hessian,
                         eqlist, tslist, pointname = IOpack.chksamepoint_exportlist(
                             "EQ", eqlist, tslist, eqpoint, f_eqpoint, const)
                         IOpack.exportconnectionlist_exclusion(tspointlist[0], pointname, const)
-
-#                        dmin = 1.0e30
-#                        disQ = [False]
-#                        eqlist = IOpack.exportlist_exclusion(eqlistpath, eqlist, headline, const)
-#                        for beforeeqpointlist in eqlist:
-#                            beforeeqpoint = beforeeqpointlist[1:-1]
-#                            beforeeqpoint = functions.periodicpoint(beforeeqpoint, const, eqpoint)
-#                            dis = beforeeqpoint - eqpoint
-#                            if type(const.sameEQthreshold) is float:
-#                                dis = max([abs(x) for x in dis])
-#                                if dis < dmin:
-#                                    dmin = copy.copy(dis)
-#                                    nearestbeforeEQlist = copy.copy(beforeeqpointlist)
-#                            elif type(const.sameEQthreshold) is list:
-#                                disQ = [ abs(x) < const.sameEQthreshold[i] for i,x in enumerate(dis)]
-#                                if all(disQ):
-#                                    nearestbeforeEQlist = copy.copy(beforeeqpointlist)
-#                                    break
-#                        if type(const.sameEQthreshold) is float:
-#                            if const.sameEQthreshold < dmin:
-#                                disQ = True
-#                            else:
-#                                disQ = False
-#                        elif type(const.sameEQthreshold) is list:
-#                            if all(disQ):
-#                                disQ = False
-#                            else:
-#                                disQ = True
-#                        else:
-#                            print("ERROR; const.sameEQthreshold is not float or list")
-#                            eqlist  = False
-#                            disQ = False
-#                        if disQ:
-#                            print("new point!", flush = True)
-#                            EQnum  = IOpack.mkdir_exclusion("EQ", 1, const)
-#                            pointname = "EQ{0:0>4}".format(EQnum)
-#                            #with open("%s/jobfiles_meta/connections.csv"%const.pwdpath, "a") as wf:
-#                                #wf.write("%s, %s\n"%(tspointlist[0], pointname))
-#                            IOpack.exportconnectionlist_exclusion(tspointlist[0], pointname, const)
-#                            #eqlist = IOpack.importlist(eqlistpath)
-#                            #headline = "#EQname, "
-#                            #headline += "CV, ..., "
-#                            #headline += "FE (kJ/mol)\n"
-#                            #eqlist = IOpack.exportlist_exclusion(eqlistpath, eqlist, headline, const)
-#                            eqlist = IOpack.importlist_exclusion(eqlistpath, const)
-#                            eqlist.append([pointname] + list(eqpoint) + [f_eqpoint])
-#                            #for i, eqlistpoint in enumerate(eqlist):
-#                                #if f_eqpoint < eqlistpoint[-1]:
-#                                    #eqlist.insert(i, [pointname] + list(eqpoint) + [f_eqpoint])
-#                                    #break
-#                            #eqlist = sorted(eqlist, key = lambda x:x[-1])
-#                            #IOpack.exportlist(eqlistpath, eqlist)
-#                            headline = "#EQname, "
-#                            #for i in range(len(eqpoint)):
-#                                #headline += "CV%s, "%i
-#                            headline += "CV, ..., "
-#                            headline += "FE (kJ/mol)\n"
-#                            eqlist = IOpack.exportlist_exclusion(eqlistpath, eqlist, headline, const)
-#                            if SHSrank == SHSroot:
-#                                print("%s is found"%pointname, flush = True)
-#                        else:
-#                            #with open("%s/jobfiles_meta/connections.csv"%const.pwdpath, "a") as wf:
-#                                #wf.write("%s, %s\n"%(tspointlist[0], nearestbeforeEQlist[0]))
-#                            IOpack.exportconnectionlist_exclusion(tspointlist[0], nearestbeforeEQlist[0], const)
                     else:
                         eqlist = None
                 if const.calc_mpiQ:
