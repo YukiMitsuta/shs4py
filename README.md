@@ -32,7 +32,8 @@ Furthermore, you can use GPGPU acceleration by using next package.
 I don't test environments under Windows.
 If you use this script, please refer the next article.
 
-Mitsuta, Yuki, and Yasuteru Shigeta. "Analytical Method Using Scaled Hypersphere Search for High-dimensional Metadynamics Simulations." Journal of Chemical Theory and Computation (2020).(https://pubs.acs.org/doi/10.1021/acs.jctc.0c00010)
+Mitsuta, Yuki, and Yasuteru Shigeta. "Analytical Method Using a Scaled Hypersphere Search for High-Dimensional Metadynamics Simulations." Journal of chemical theory and computation 16.6 (2020): 3869-3878.
+(https://pubs.acs.org/doi/10.1021/acs.jctc.0c00010)
 
 # Author
 
