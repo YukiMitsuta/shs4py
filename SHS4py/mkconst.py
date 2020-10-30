@@ -20,6 +20,8 @@ def main(constC):
 
     if not "jobfilepath" in _keylist:
         constC.jobfilepath = "./jobfiles_meta/"
+    if not "RCMCfilepath" in _keylist:
+        constC.RCMCfilepath = "./RCMCresult/"
     if not "systemname" in _keylist:
         constC.systemname = "main"
 
@@ -146,17 +148,17 @@ def main(constC):
             from . import calcgau
         except ImportError:
             import calcgau
-        #try:
-            #from . import calcVES
-        #except ImportError:
-            #import calcVES
-        #try:
-            #from . import calcRCMC
-        #except ImportError:
-            #import calcRCMC
+        try:
+            from . import calcVES
+        except ImportError:
+            import calcVES
+        try:
+            from . import calcRCMC
+        except ImportError:
+            import calcRCMC
         constC.calcgau = calcgau
-        #constC.calcVES = calcVES
-        #constC.calcRCMC = calcRCMC
+        constC.calcVES = calcVES
+        constC.calcRCMC = calcRCMC
         include_dirs = [np.get_include()]
     if not "PBmetaDQ" in _keylist:
         constC.PBmetaDQ = False

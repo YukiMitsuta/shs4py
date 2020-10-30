@@ -17,7 +17,7 @@ def main(const):
     """
 
     """
-    if os.path.exists("./RCMCresult"):
+    if os.path.exists(const.RCMCfilepath):
         if const.rank == const.root:
             n, SSlistlist, stateNlist, stateQlistlist, Kmatlist, Pmaxindexs = importNetwork(const)
         else:
@@ -90,14 +90,14 @@ def main(const):
                 writeline_root = ""
                 for writeline_g in writelineall:
                     writeline_root += writeline_g
-                with open("./RCMCresult/Kmatrix/Kmat_chkpoint%05d.csv"%int(n), "w") as wf:
+                with open(const.RCMCfilepath+"/Kmatrix/Kmat_chkpoint%05d.csv"%int(n), "w") as wf:
                     wf.write(writeline_root)
                 writeline = ""
                 for i, stateN in enumerate(stateNlist[-1]):
                     if stateN == 0.0:
                         continue
                     writeline += "%10d, %s\n"%(i, stateN)
-                with open("./RCMCresult/stateN/stateN_chkpoint%05d.csv"%int(n), "w") as wf:
+                with open(const.RCMCfilepath+"/stateN/stateN_chkpoint%05d.csv"%int(n), "w") as wf:
                     wf.write(writeline)
 
             exit()
@@ -154,22 +154,22 @@ def main(const):
                     if Kmat_kl == 0.0:
                         continue
                     writeline += "%6d, %6d, %s\n"%(k,l, Kmat_kl)
-                with open("./RCMCresult/Kmatrix/Kmat_chkpoint%05d.csv"%int(n), "w") as wf:
+                with open(const.RCMCfilepath+"/Kmatrix/Kmat_chkpoint%05d.csv"%int(n), "w") as wf:
                     wf.write(writeline)
                 writeline = ""
                 for i, stateN in enumerate(stateNlist[-1]):
                     if stateN == 0.0:
                         continue
                     writeline += "%10d, %s\n"%(i, stateN)
-                with open("./RCMCresult/stateN/stateN_chkpoint%05d.csv"%int(n), "w") as wf:
+                with open(const.RCMCfilepath+"/stateN/stateN_chkpoint%05d.csv"%int(n), "w") as wf:
                     wf.write(writeline)
             break
         if const.rank == const.root:
-            with open("./RCMCresult/maxK.csv", "a") as wf:
+            with open(const.RCMCfilepath+"/maxK.csv", "a") as wf:
                 wf.write("%3d, %s\n"%(int(n + 1), maxK))
             print("1/maxK = %4.3f ps "%(1.0/maxK), flush = True)
         if const.rank == const.root:
-            with open("./RCMCresult/maxKindex.csv", "a") as wf:
+            with open(const.RCMCfilepath+"/maxKindex.csv", "a") as wf:
                 wf.write("%3d, %s\n"%(int(n + 1), maxind))
         #if const.rank == const.root:
             #print("calcstateN", flush = True)
@@ -183,7 +183,7 @@ def main(const):
 #            for i, stateN in enumerate(stateNlist[-1]):
 #                if stateN != stateNlist[0][i]:
 #                    writeline += "%10d, %s\n"%(i, stateN)
-#            with open("./RCMCresult/stateN/%05d.csv"%int(n+1), "w") as wf:
+#            with open(const.RCMCfilepath+"/stateN/%05d.csv"%int(n+1), "w") as wf:
 #                wf.write(writeline)
         #Kmat_coo = Kmatlist[-1].tocoo()
         Kmatdash = calcdash(n, dim, maxind, maxind_indexs, sig, Kmatlist, Kmat_coo, const)
@@ -210,14 +210,14 @@ def main(const):
                 #writeline_root = ""
                 #for writeline_g in writelineall:
                     #writeline_root += writeline_g
-                with open("./RCMCresult/Kmatrix/Kmat_chkpoint%05d.csv"%int(n), "w") as wf:
+                with open(const.RCMCfilepath+"/Kmatrix/Kmat_chkpoint%05d.csv"%int(n), "w") as wf:
                     wf.write(writeline)
                 writeline = ""
                 for i, stateN in enumerate(stateNlist[-1]):
                     if stateN == 0.0:
                         continue
                     writeline += "%10d, %s\n"%(i, stateN)
-                with open("./RCMCresult/stateN/stateN_chkpoint%05d.csv"%int(n), "w") as wf:
+                with open(const.RCMCfilepath+"/stateN/stateN_chkpoint%05d.csv"%int(n), "w") as wf:
                     wf.write(writeline)
             while exporttime < 1.0 / const.k_min:
                 if 1/maxK < exporttime:
@@ -370,33 +370,33 @@ def makeNetwork_Markov(const):
         Kmatlist   = [Kmat]
 
     n = 0
-    if not os.path.exists("RCMCresult"):
-        os.mkdir("RCMCresult")
+    if not os.path.exists(const.RCMCfilepath):
+        os.mkdir(const.RCMCfilepath)
     writeline = ""
     for i, SSname in enumerate(SSlistlist[0]):
         writeline += "%10d, %s\n"%(i, SSname)
-    with open("./RCMCresult/SSlist.csv", "w") as wf:
+    with open(const.RCMCfilepath+"/SSlist.csv", "w") as wf:
         wf.write(writeline)
     writeline = ""
     for i, stateN in enumerate(stateNlist[-1]):
         if stateN != 0.0:
             writeline += "%10d, %s\n"%(i, stateN)
     writeline += "\n"
-    if not os.path.exists("./RCMCresult/stateN"):
-        os.mkdir("./RCMCresult/stateN")
-    with open("./RCMCresult/stateN/%05d.csv"%n, "w") as wf:
+    if not os.path.exists(const.RCMCfilepath+"/stateN"):
+        os.mkdir(const.RCMCfilepath+"/stateN")
+    with open(const.RCMCfilepath+"/stateN/%05d.csv"%n, "w") as wf:
         wf.write(writeline)
-    if not os.path.exists("RCMCresult/stateQ"):
-        os.mkdir("RCMCresult/stateQ")
+    if not os.path.exists(const.RCMCfilepath+"/stateQ"):
+        os.mkdir(const.RCMCfilepath+"/stateQ")
     for ip_index in range(len(stateQlistlist[-1])):
         writeline = "%6d"%int(n)
         for steteQn, stateQ in stateQlistlist[-1][ip_index]:
             writeline += ", %s, %s"%(steteQn, stateQ)
         writeline += "\n"
-        with open("./RCMCresult/stateQ/%05d.csv"%ip_index, "a") as wf:
+        with open(const.RCMCfilepath+"/stateQ/%05d.csv"%ip_index, "a") as wf:
             wf.write(writeline)
-    if not os.path.exists("RCMCresult/Kmatrix"):
-        os.mkdir("RCMCresult/Kmatrix")
+    if not os.path.exists(const.RCMCfilepath+"/Kmatrix"):
+        os.mkdir(const.RCMCfilepath+"/Kmatrix")
     writeline = ""
     if not Kmat is False:
         Kmat_coo = Kmat.tocoo()
@@ -404,14 +404,14 @@ def makeNetwork_Markov(const):
             k = Kmat_coo.row[i]
             l = Kmat_coo.col[i]
             writeline += "%6d, %6d, %s\n"%(k, l, Kmat[k,l])
-        with open("./RCMCresult/Kmatrix/%05d.csv"%int(0), "w") as wf:
+        with open(const.RCMCfilepath+"/Kmatrix/%05d.csv"%int(0), "w") as wf:
             wf.write(writeline)
     if len(Pmaxindexs) != 0:
         writeline = ""
         #for Pmaxindex in Pmaxindexs:
         writeline += "%s\n"%Pmaxindexs[0]
         writeline += "%s"%Pmaxindexs[1]
-        with open("./RCMCresult/Pmaxindex.csv", "w") as wf:
+        with open(const.RCMCfilepath+"/Pmaxindex.csv", "w") as wf:
             wf.write(writeline)
     else:
         Pmaxindexs =[-1,-1]
@@ -837,33 +837,33 @@ def makeNetwork(const):
 
 
         n = 0
-        if not os.path.exists("RCMCresult"):
-            os.mkdir("RCMCresult")
+        if not os.path.exists(const.RCMCfilepath):
+            os.mkdir(const.RCMCfilepath)
         writeline = ""
         for i, SSname in enumerate(SSlistlist[0]):
             writeline += "%10d, %s\n"%(i, SSname)
-        with open("./RCMCresult/SSlist.csv", "w") as wf:
+        with open(const.RCMCfilepath+"/SSlist.csv", "w") as wf:
             wf.write(writeline)
         writeline = ""
         for i, stateN in enumerate(stateNlist[-1]):
             if stateN != 0.0:
                 writeline += "%10d, %s\n"%(i, stateN)
         writeline += "\n"
-        if not os.path.exists("./RCMCresult/stateN"):
-            os.mkdir("./RCMCresult/stateN")
-        with open("./RCMCresult/stateN/%05d.csv"%n, "w") as wf:
+        if not os.path.exists(const.RCMCfilepath+"/stateN"):
+            os.mkdir(const.RCMCfilepath+"/stateN")
+        with open(const.RCMCfilepath+"/stateN/%05d.csv"%n, "w") as wf:
             wf.write(writeline)
-        if not os.path.exists("RCMCresult/stateQ"):
-            os.mkdir("RCMCresult/stateQ")
+        if not os.path.exists(const.RCMCfilepath+"/stateQ"):
+            os.mkdir(const.RCMCfilepath+"/stateQ")
         for ip_index in range(len(stateQlistlist[-1])):
             writeline = "%6d"%int(n)
             for steteQn, stateQ in stateQlistlist[-1][ip_index]:
                 writeline += ", %s, %s"%(steteQn, stateQ)
             writeline += "\n"
-            with open("./RCMCresult/stateQ/%05d.csv"%ip_index, "a") as wf:
+            with open(const.RCMCfilepath+"/stateQ/%05d.csv"%ip_index, "a") as wf:
                 wf.write(writeline)
-        if not os.path.exists("RCMCresult/Kmatrix"):
-            os.mkdir("RCMCresult/Kmatrix")
+        if not os.path.exists(const.RCMCfilepath+"/Kmatrix"):
+            os.mkdir(const.RCMCfilepath+"/Kmatrix")
         writeline = ""
         if not Kmat is False:
             Kmat_coo = Kmat.tocoo()
@@ -871,20 +871,20 @@ def makeNetwork(const):
                 k = Kmat_coo.row[i]
                 l = Kmat_coo.col[i]
                 writeline += "%6d, %6d, %s\n"%(k, l, Kmat[k,l])
-            with open("./RCMCresult/Kmatrix/%05d.csv"%int(0), "w") as wf:
+            with open(const.RCMCfilepath+"/Kmatrix/%05d.csv"%int(0), "w") as wf:
                 wf.write(writeline)
         writeline = ""
         usedtslist = list(set(usedtslist))
         for tsname in usedtslist:
             writeline += "%s\n"%tsname
-        with open("./RCMCresult/usedtslist.csv", "w") as wf:
+        with open(const.RCMCfilepath+"/usedtslist.csv", "w") as wf:
             wf.write(writeline)
         if len(Pmaxindexs) != 0:
             writeline = ""
             #for Pmaxindex in Pmaxindexs:
             writeline += "%s\n"%Pmaxindexs[0]
             writeline += "%s"%Pmaxindexs[1]
-            with open("./RCMCresult/Pmaxindex.csv", "w") as wf:
+            with open(const.RCMCfilepath+"/Pmaxindex.csv", "w") as wf:
                 wf.write(writeline)
         else:
             Pmaxindexs =[-1,-1]
@@ -910,10 +910,10 @@ def makeNetwork(const):
     #exit()
     return n, SSlistlist, stateNlist, stateQlistlist, Kmatlist, Pmaxindexs
 def importNetwork(const):
-    #Kmatfiles = glob.glob("./RCMCresult/Kmatrix/*.csv")
+    #Kmatfiles = glob.glob(const.RCMCfilepath+"/Kmatrix/*.csv")
     #nlist = [int(os.path.splitext(os.path.basename(filepath))[0])
                 #for filepath in Kmatfiles if not "chkpoint" in filepath]
-    Kmatfiles = glob.glob("./RCMCresult/Kmatrix/Kmat*.csv")
+    Kmatfiles = glob.glob(const.RCMCfilepath+"/Kmatrix/Kmat*.csv")
     nlist = [os.path.splitext(os.path.basename(filepath))[0]
                 for filepath in Kmatfiles if "chkpoint" in filepath]
     nlist = [int(filepath.replace("Kmat_chkpoint","")) for filepath in nlist]
@@ -921,7 +921,7 @@ def importNetwork(const):
     nlist.reverse()
     n = max(nlist)
     SSlist = []
-    for line in open("./RCMCresult/SSlist.csv"):
+    for line in open(const.RCMCfilepath+"/SSlist.csv"):
         line = line.replace("\n","").split(",")
         SSlist.append(line[-1])
     dim = len(SSlist)
@@ -929,10 +929,10 @@ def importNetwork(const):
     if True:
     #for n in nlist:
 #        stateN = False
-#        stateNpath = "./RCMCresult/stateN/%05d.csv"%int(n)
+#        stateNpath = const.RCMCfilepath+"/stateN/%05d.csv"%int(n)
 #        if os.path.exists(stateNpath):
 #            stateN = np.zeros(dim)
-#            for line in open("./RCMCresult/stateN/%05d.csv"%int(n)):
+#            for line in open("./const.RCMCfilepath/stateN/%05d.csv"%int(n)):
 #                if line == "\n":
 #                    break
 #                line = line.split(",")
@@ -943,9 +943,9 @@ def importNetwork(const):
 #        if stateN is False:
 #            continue
         stateQlist = []
-#        for ip_index in range(len(glob.glob("./RCMCresult/stateQ/*.csv"))):
+#        for ip_index in range(len(glob.glob("./const.RCMCfilepath/stateQ/*.csv"))):
 #            stateQ = False
-#            for line in open("./RCMCresult/stateQ/%05d.csv"%ip_index):
+#            for line in open("./const.RCMCfilepath/stateQ/%05d.csv"%ip_index):
 #                line = line.split(",")
 #                if int(line[0]) == n:
 #                    stateQ = []
@@ -960,9 +960,9 @@ def importNetwork(const):
 #            continue
         stateQlistlist = [stateQlist]
 
-        #if os.path.exists("./RCMCresult/Kmatrix/%05d.csv"%int(n)):
+        #if os.path.exists("./const.RCMCfilepath/Kmatrix/%05d.csv"%int(n)):
             #break
-    chkpointname = "./RCMCresult/stateN/stateN_chkpoint%05d.csv"%int(n)
+    chkpointname = const.RCMCfilepath+"/stateN/stateN_chkpoint%05d.csv"%int(n)
     stateN = np.zeros(dim)
     if os.path.exists(chkpointname):
         for line in open(chkpointname):
@@ -973,10 +973,10 @@ def importNetwork(const):
                 stateN[k] = N_k
     else:
         for stateN_n in range(n+1):
-            if not os.path.exists("./RCMCresult/stateN/%05d.csv"%int(stateN_n)):
+            if not os.path.exists(const.RCMCfilepath+"/stateN/%05d.csv"%int(stateN_n)):
                 print("ERROR; there is not stateN/%05d.csv"%int(stateN_n))
                 exit()
-            for line in open("./RCMCresult/stateN/%05d.csv"%int(stateN_n)):
+            for line in open(const.RCMCfilepath+"/stateN/%05d.csv"%int(stateN_n)):
                 line = line.split(",")
                 if len(line) != 2:
                     continue
@@ -987,9 +987,9 @@ def importNetwork(const):
     stateNlist = [stateN]
 
     Kmat = lil_matrix((dim, dim), dtype=float)
-    chkpointname = "./RCMCresult/Kmatrix/Kmat_chkpoint%05d.csv"%int(n)
+    chkpointname = const.RCMCfilepath+"/Kmatrix/Kmat_chkpoint%05d.csv"%int(n)
     if os.path.exists(chkpointname):
-        for line in open("./RCMCresult/Kmatrix/Kmat_chkpoint%05d.csv"%int(n)):
+        for line in open(const.RCMCfilepath+"/Kmatrix/Kmat_chkpoint%05d.csv"%int(n)):
             line = line.split(",")
             k    = int(line[0])
             l    = int(line[1])
@@ -998,10 +998,10 @@ def importNetwork(const):
                 Kmat[k,l] = K_kl
     else:
         for KmatN in range(n+1):
-            if not os.path.exists("./RCMCresult/Kmatrix/%05d.csv"%int(KmatN)):
+            if not os.path.exists(const.RCMCfilepath+"/Kmatrix/%05d.csv"%int(KmatN)):
                 print("ERROR; there is not Kmatrix/%05d.csv"%int(KmatN))
                 exit()
-            for line in open("./RCMCresult/Kmatrix/%05d.csv"%int(KmatN)):
+            for line in open(const.RCMCfilepath+"/Kmatrix/%05d.csv"%int(KmatN)):
                 line = line.split(",")
                 k    = int(line[0])
                 l    = int(line[1])
@@ -1010,8 +1010,8 @@ def importNetwork(const):
                     Kmat[k,l] = K_kl
     Kmatlist = [Kmat]
     Pmaxindexs = []
-    if os.path.exists("./RCMCresult/Pmaxindex.csv"):
-        for line in open("./RCMCresult/Pmaxindex.csv"):
+    if os.path.exists(const.RCMCfilepath+"/Pmaxindex.csv"):
+        for line in open(const.RCMCfilepath+"/Pmaxindex.csv"):
             Pmaxindexs.append(int(line))
     else:
         Pmaxindexs = [-1, -1]
@@ -1215,7 +1215,7 @@ def calcmatrix(n, dim, maxind, sig, Kmatlist, Kmat_coo, Kmatdash, maxind_indexs,
                 #writeline += "%6d, %6d, %s\n"%(k,l, sigindex)
                 writecounter += 1
     #if const.rank == const.root:
-        #with open("./RCMCresult/Kmatrix/%05d.csv"%int(n+1), "w") as wf:
+        #with open("./const.RCMCfilepath/Kmatrix/%05d.csv"%int(n+1), "w") as wf:
             #wf.write(writeline)
         #print("number of changed connections = %s"%writecounter,flush = True)
     return Kmat_return

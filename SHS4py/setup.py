@@ -22,11 +22,12 @@ setup(
     include_dirs = [numpy.get_include()]
     )
 
-#setup(
-    #name = 'calcVES',
-    #ext_modules = cythonize('calcVES.pyx'),
-    #include_dirs = [numpy.get_include()]
-    #)
+setup(
+    name = 'calcVES',
+    ext_modules = cythonize('calcVES.pyx'),
+    #include_path = [numpy.get_include()]
+    include_dirs = [numpy.get_include()]
+    )
 
 ext_modules = [Extension("calcRCMC", ["calcRCMC.pyx"], language="c++")]#,
                #Extension("module2", ["module2.pyx"], language="c++")]
