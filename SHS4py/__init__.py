@@ -71,6 +71,7 @@ def SHSearch(f, grad, hessian,
         tslist = IOpack.importlist_exclusion(tslistpath, const)
     else:
         eqlist        = None
+        tslist        = None
         initialpoints = None
     if const.calc_mpiQ:
         eqlist        = SHScomm.bcast(eqlist, root = 0)

@@ -63,21 +63,27 @@ class VESfuncC(object):
             maximum = np.pi
         else:
             maximum = float(maximum)
-        #print(minimum)
-        #print(maximum)
+        #print(minimum, flush = True)
+        #print(maximum, flush = True)
         self.calc_t = lambda x: (x - (maximum + minimum) * 0.5) / (maximum - minimum) * 2.0
         self.tconst = 2.0 / (maximum - minimum)
+        #print(self.tconst, flush = True)
+        #print(self.calc_t(40.0), flush = True)
+        #print(self.calc_t(0.0), flush = True)
     def fourier(self, pldic):
         self.f        = self.fourier_f
         self.grad     = self.fourier_grad
         self.gradgrad = self.fourier_gradgrad
     def fourier_f(self, x_i, k):
+        if 10 < x_i:
+            print("ERROR; x_i = %s"%x_i, flush = True) 
+            exit()
         if self.const.cythonQ:
             return self.const.calcVES.fourier_f(x_i, k, self.piPinv)
         if k == 0:
             return 1.0
         else:
-            a = ((k // 2)+1) * self.piPinv
+            a = ((k-1) // 2+1) * self.piPinv
             if k % 2 == 0:
                 return np.sin(a * x_i)
             else:
@@ -88,7 +94,7 @@ class VESfuncC(object):
         if k == 0:
             return 0.0
         else:
-            a = ((k // 2)+1) * self.piPinv
+            a = ((k-1) // 2+1) * self.piPinv
             if k % 2 == 0:
                 return   a * np.cos(a * x_i)
             else:
@@ -99,7 +105,7 @@ class VESfuncC(object):
         if k == 0:
             return 0.0
         else:
-            a = ((k // 2)+1) * self.piPinv
+            a = ((k-1) // 2+1) * self.piPinv
             if k % 2 == 0:
                 return - a * a * np.sin(a * x_i)
             else:
@@ -177,6 +183,7 @@ class VESfuncC(object):
             #series_f.append(returnf)
             returnf = 2.0 * t * series_f[0] - series_f[1]
             series_f = [returnf, series_f[0]]
+        #print("x_i, t, returnf = %s, %s, %s"%(x_i, t,returnf))
         return returnf
     def chebyshev_grad(self, x_i, k):
         if k == 0:
@@ -403,12 +410,15 @@ class VESpotential(object):
             VESdic["order"] = []
             #VESdic["BFfunctions"] = [ "Nan"       for _ in range(self.dim)]
             VESdic["BFfunctions"] = {}
-            for arg in VESdic["ARG"].split(","):
+            for argSortN, arg in enumerate(VESdic["ARG"].split(",")):
                 VESdic["order"].append(ARGorder[arg])
-                for BFdic in VESdic["BFlist"]:
+                BFdic = VESdic["BFlist"][argSortN]
+                #for BFdic in VESdic["BFlist"]:
+                if True:
                     for a in BFdic["options"]:
                         if "BF" in a:
                             break
+                    #print(a)
                     VESdic["BFfunctions"][ARGorder[arg]] = VESfuncC(a, BFdic, self.const)
             argN = len(VESdic["order"])
 
@@ -515,6 +525,20 @@ class VESpotential(object):
                         np.save(npzpath, x)
                         npzpath = VESdic["coeffpath"]+".y.npy"
                         np.save(npzpath, y)
+                        writeline_f = ""
+                        writeline_grad = ""
+                        for i in range(len(x)):
+                            x_i = x[i]
+                            for j in range(len(y)):
+                                y_j     = y[j]
+                                f_ij    = z_f[i,j]
+                                #grad_ij = z_grad[i,j]
+                                writeline_f    += "{0: 10.9f}, {1: 10.9f}, {2: 10.9f}\n".format(x_i, y_j, f_ij)
+                                #writeline_grad += "{0: 10.9f}, {1: 10.9f}, {2: 10.9f}\n".format(x_i, y_j, grad_ij)
+                        with open(VESdic["coeffpath"]+"_fgrid.csv", "w") as wf:
+                            wf.write(writeline_f)
+                        #with open(VESdic["coeffpath"]+"_gradgrid.csv", "w") as wf:
+                            #wf.write(writeline_grad)
                 if mpicounter % self.size != self.rank:
                     continue
                 VESdic["f_grid"]    =  interpolate.RectBivariateSpline(x, y, z_f)
@@ -680,9 +704,9 @@ class VESpotential(object):
             #if self.rank == self.root:
                 #print("returnf, returnf_grid = %s, %s"%(returnf,returnf_grid),flush=True)
             #exit()
-        print(x)
-        print(xdamp)
-        print(returnf)
+        #print(x)
+        #print(xdamp)
+        #print(returnf)
         return returnf
     def f_stdev(self, x):
         returnflist = [0.0 for _ in range(len(self.VESlist[0]["coefflistlist"]))]
@@ -712,6 +736,7 @@ class VESpotential(object):
         #return stdev(returnflist)
         return returnflist
     def grad(self, x):
+        #print(x)
         if self.const.CVfixQ:
             _x = self.replaceX(x)
         else:

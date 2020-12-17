@@ -13,7 +13,7 @@ cpdef DTYPE_t fourier_f(DTYPE_t x_i, int k, DTYPE_t piPinv):
     if k == 0:
         return 1.0
     else:
-        a = ((k // 2)+1) * piPinv 
+        a = (((k-1) // 2)+1) * piPinv 
         if k % 2 == 0:
             return np.sin(a * x_i)
         else:
@@ -24,7 +24,7 @@ cpdef DTYPE_t fourier_grad(DTYPE_t x_i, int k, DTYPE_t piPinv):
     if k == 0:
         return 0.0
     else:
-        a = ((k // 2)+1) * piPinv 
+        a = (((k-1) // 2)+1) * piPinv 
         if k % 2 == 0:
             return   a * np.cos(a * x_i)
         else:
@@ -35,7 +35,7 @@ cpdef DTYPE_t fourier_gradgrad(DTYPE_t x_i, int k, DTYPE_t piPinv):
     if k == 0:
         return 0.0
     else:
-        a = ((k // 2)+1) * piPinv 
+        a = (((k-1) // 2)+1) * piPinv 
         if k % 2 == 0:
             return - a * a * np.sin(a * x_i)
         else:
