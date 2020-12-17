@@ -75,9 +75,6 @@ class VESfuncC(object):
         self.grad     = self.fourier_grad
         self.gradgrad = self.fourier_gradgrad
     def fourier_f(self, x_i, k):
-        if 10 < x_i:
-            print("ERROR; x_i = %s"%x_i, flush = True) 
-            exit()
         if self.const.cythonQ:
             return self.const.calcVES.fourier_f(x_i, k, self.piPinv)
         if k == 0:
