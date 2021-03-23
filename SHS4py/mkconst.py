@@ -20,8 +20,6 @@ def main(constC):
 
     if not "jobfilepath" in _keylist:
         constC.jobfilepath = "./jobfiles_meta/"
-    if not "RCMCfilepath" in _keylist:
-        constC.RCMCfilepath = "./RCMCresult/"
     if not "systemname" in _keylist:
         constC.systemname = "main"
 
@@ -55,7 +53,7 @@ def main(constC):
         constC.sameEQthreshold = 0.1
 
     if not "IOEsphereA_initial" in _keylist:
-       constC. IOEsphereA_initial = 0.20
+       constC.IOEsphereA_initial = 0.20
     if not "IOEsphereA_dist" in _keylist:
         constC.IOEsphereA_dist    = 0.05
 
@@ -81,7 +79,10 @@ def main(constC):
     if not "EQwallmin" in _keylist:
         constC.EQwallmin         = np.array([-1.0e30 for _ in range(100)])
     if not "abslist" in _keylist:
-        constC.abslist           = np.array([ False  for _ in range(100)])
+        constC.abslist           = False
+
+    if not "EQfeMax" in _keylist:
+        constC.EQfeMax = 1.0e30
 
     if not "Ddimer" in _keylist:
         constC.Ddimer          = 0.05
@@ -179,7 +180,7 @@ def main(constC):
     if not "coeffPickN" in _keylist:
         constC.coeffPickN = False
     if not "coeffPickNlist" in _keylist:
-        constC.coeffPickNlist = False
+        constC.coeffPickNlist = []
     if not "coeffabsmin" in _keylist:
         constC.coeffabsmin = 0.0
 

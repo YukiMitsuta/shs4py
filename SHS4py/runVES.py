@@ -26,14 +26,18 @@ def main():
     constC.beta    = 1.0 / constC.betainv
     constC.initialpointN      = 1000
     #constC.initialpointN       = 0
+    #constC.calc_cupyQ          = True
     constC.cythonQ             = True
     #constC.calc_mpiQ           = True
     constC.calc_mpiQ           = False
+    constC.use_jacQ            = True
     constC.sameEQthreshold = [ 0.2 for _ in range(4)] + [ 2.0]
     constC.IOEsphereA_initial = 0.10
     constC.IOEsphereA_dist     = 0.02
     constC.deltas0 = 0.20
     constC.deltas  = 0.01
+    #constC.lADDnQ              = True
+    #constC.IOEl                = 10
 
     constC.coeffPickNlist                = []
 #! SET iteration  400000
@@ -45,13 +49,32 @@ def main():
 
     constC.wallmax = [ 1.0e30 for _ in range(4)] + [ 50.0]
     constC.wallmin = [-1.0e30 for _ in range(4)] + [-50.0]
+    #constC.EQwallmax = [ 1.0e30 for _ in range(4)] + [ 5.0]
+    #constC.EQwallmin = [-1.0e30 for _ in range(4)] + [-5.0]
+    #constC.EQwallmax = [ 1.0e30 for _ in range(4)] + [10.0]
+    #constC.EQwallmin = [-1.0e30 for _ in range(4)] + [ 5.0]
+   
+    #constC.EQwallmax = [ 1.0e30 for _ in range(4)] + [20.0]
+    #constC.EQwallmin = [-1.0e30 for _ in range(4)] + [10.0]
+
+    #constC.EQwallmax = [ 1.0e30 for _ in range(4)] + [30.0]
+    #constC.EQwallmin = [-1.0e30 for _ in range(4)] + [20.0]
+
+    #constC.EQwallmax = [ 1.0e30 for _ in range(4)] + [40.0]
+    #constC.EQwallmin = [-1.0e30 for _ in range(4)] + [30.0]
 
     constC.EQwallmax = [ 1.0e30 for _ in range(4)] + [35.0]
     constC.EQwallmin = [-1.0e30 for _ in range(4)] + [-35.0]
 
     constC.abslist = [False for _ in range(4)] + [True]
 
+    #constC.x0randomQ = False
+    #constC.chkBifurcationQ = True
+
     constC.x0randomQ = True
+    constC.chkBifurcationQ = False
+    constC.chkinitialTSQ = False
+
 
     constC.gridQ = True
     constC.grid_importQ = True

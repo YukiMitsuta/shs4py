@@ -33,9 +33,21 @@ def PoppinsMinimize(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, 
     PoppinsMinimize:      optimization of minimize EQ points by using L-BFGS-B
     """
 
-    gradinitial     = grad(initialpoint)
-    if np.linalg.norm(gradinitial) < const.threshold:
-        return initialpoint, 0.0
+    #gradinitial     = grad(initialpoint)
+    #grad_numerical = np.zeros(len(gradinitial))
+    #eps = 1.0e-4
+    #for i in range(len(gradinitial)):
+        #initial_d = copy.copy(initialpoint)
+        #initial_d[i] += eps
+        #grad_numerical[i] = (f(initial_d) - f(initialpoint))/ eps
+    #printline = ""
+    #_d = gradinitial - grad_numerical
+    #for _dpoint in _d:
+        #printline += "% 5.4f, "%_dpoint
+    #print("gradinitial - grad_numerical = %s"%printline, flush=True)
+    #if 1.0 < np.linalg.norm(_d):
+        #print(initialpoint)
+
     boundlist = []
     if const.periodicQ:
         if type(const.periodicmin) is float:
@@ -46,29 +58,18 @@ def PoppinsMinimize(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, 
             for i in range(len(initialpoint)):
                 boundlist.append((initialpoint[i] + const.periodicmin[i],
                                   initialpoint[i] + const.periodicmax[i]))
-    else:
-        for i in range(len(initialpoint)):
-            boundlist.append((const.wallmin[i], const.wallmax[i]))
-
-    if True:
-        #result = minimize(f, initialpoint, jac=grad, hess=hessian)
         result = minimize(f, initialpoint, jac=grad, bounds = boundlist, method="L-BFGS-B")
-        #result = minimize(f, initialpoint, jac=grad, method="BFGS")
     else:
-        f_ini = f(initialpoint)
-        if optdigTH < f_ini:
-            return initialpoint, 0.0
-        consf = (
-                {'type': 'ineq', 'fun': lambda x: cons(x, f, optdigTH)}
-                )
-        result = minimize(f, initialpoint, jac=grad, constraints=consf, method="SLSQP")
-    #if SHSrank == SHSroot:
-        #print("%s: %s"%(SHSrank, np.linalg.norm(result.x - initialpoint)))
-        #print("%s: %s"%(SHSrank, result.message))
-        
+        #for i in range(len(initialpoint)):
+            #boundlist.append((const.wallmin[i], const.wallmax[i]))
+        result = minimize(f, initialpoint, jac=grad, method="L-BFGS-B")
+
     x_0 = functions.periodicpoint(result.x, const)
     #exit()
     #return x_0, result.hess_inv
+    grad_x0    = grad(x_0)
+    if const.threshold < np.linalg.norm(grad_x0):
+        return False, 0.0
     return x_0, 0.0
 def PoppinsNewtonRaphson(initialpoint, f, grad, hessian, const):
     """

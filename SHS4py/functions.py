@@ -70,8 +70,7 @@ class PlumedDatClass(object):
         writeline       = ""
         option_Main_names = ["PRINT", "RESTRAINT", "TORSION", "MOLINFO",
                 "VES_LINEAR_EXPANSION", "BF_FOURIER", "TD_UNIFORM", "TD_WELLTEMPERED",
-                "BF_CHEBYSHEV", "OPT_AVERAGED_SGD", "COM", "UNITS", "RESTART"]
-        optionMainName = False
+                "OPT_AVERAGED_SGD"]
         for pldic in self.pldiclist:
             notwriteQ = False
             if pldic["linefeedQ"]:
@@ -117,8 +116,6 @@ class PlumedDatClass(object):
                         #FILEname = copy.copy(v)
                     if k is "options":
                         for a in v:
-                            if a in option_Main_names:
-                                optionMainName = copy.copy(a)
                             if equibliumQ:
                                 if "METAD" in a:
                                     #notwriteQ = True
@@ -140,19 +137,12 @@ class PlumedDatClass(object):
                     writeline += " #%s\n"%(" ".join(pldic["comments"]))
                 else:
                     writeline += "\n"
-            if optionMainName is False:
-                print("ERROR; there is not optionMainName")
-                print("       please add Main Name of option in the optionMainNames")
-                print(pldic["options"])
-                exit()
 #            if equibliumQ:
 #                if "METAD" in writeline:
 #                    continue
 #                if "PRINT" in writeline:
 #                    #print(writeline)
 #                    writeline.replace(FILEname, FILEname + "_npt")
-
-
         with open(filename, "w") as wf:
             wf.write(writeline)
     def rewritepwd(self, pwdpath):

@@ -19,6 +19,7 @@ Available functions:
 
 import os, glob, shutil, sys, re
 import time, datetime, copy, inspect
+import tarfile
 import numpy      as np
 
 #from . import const
@@ -114,13 +115,31 @@ def mkdir_exclusion(dirkind, fileN, const):
     #print("Waiting mkdir_exclusion", flush = True)
     lock = fasteners.InterProcessLock(lockfilepath_mkdir)
     lock.acquire()
-    for num in range(1,100000):
-        if os.path.exists("{0}/{1}/{2}{3:0>4}".format(const.pwdpath, const.jobfilepath, dirkind, num)) is False:
-            for i in range(fileN):
-                os.mkdir("{0}/{1}/{2}{3:0>4}".format(const.pwdpath, const.jobfilepath, dirkind, num + i))
-                if const.moveQ:
-                    os.mkdir("{0}/{1}/{2}{3:0>4}".format(const.tmppath, const.jobfilepath, dirkind, num + i))
-            break
+#    for num in range(1,100000):
+#        if os.path.exists("{0}/{1}/{2}{3:0>4}".format(const.pwdpath, const.jobfilepath, dirkind, num)) is False:
+#            for i in range(fileN):
+#                os.mkdir("{0}/{1}/{2}{3:0>4}".format(const.pwdpath, const.jobfilepath, dirkind, num + i))
+#                if const.moveQ:
+#                    os.mkdir("{0}/{1}/{2}{3:0>4}".format(const.tmppath, const.jobfilepath, dirkind, num + i))
+#            break
+    tarfilename = "%s/%s/dir%s.tar"%(const.pwdpath, const.jobfilepath,dirkind)
+    if os.path.exists(tarfilename):
+        with tarfile.open(tarfilename, "r:") as tr:
+            for num in range(1,100000):
+                filename0 = "{0}{1:0>4}".format(dirkind, num)
+                for tarname in tr.getnames():
+                    if filename0 in tarname:
+                        break
+                else:
+                    break
+    else:
+        num = 1
+    with tarfile.open(tarfilename, "a:") as ta:
+        for i in range(fileN):
+            filename = "{0}{1:0>4}".format(dirkind, num + i)
+            os.mkdir(filename)
+            ta.add(filename)
+            os.rmdir(filename)
     lock.release()
     #print("End mkdir_exclusion", flush = True)
     return num
@@ -379,26 +398,39 @@ def findEQpath_exclusion(eqlist, const):
     dirname = False
     eqpoint = False
     eqlist = sorted(eqlist, key = lambda x:x[-1])
-    for eqpointlist in eqlist:
-        eqpoint = eqpointlist[1:-1]
-        walloutQ = False
-        for i in range(len(eqpoint)):
-            if eqpoint[i] < const.EQwallmin[i] or const.EQwallmax[i] < eqpoint[i]:
-                walloutQ = True
+    tarfilename = "%s/%s/dirEQ.tar"%(const.pwdpath, const.jobfilepath)
+    with tarfile.open(tarfilename, "r:") as tr:
+        for eqpointlist in eqlist:
+            eqpoint = eqpointlist[1:-1]
+            walloutQ = False
+            for i in range(len(eqpoint)):
+                if eqpoint[i] < const.EQwallmin[i] or const.EQwallmax[i] < eqpoint[i]:
+                    walloutQ = True
+                    break
+            if walloutQ:
+                continue
+            dirname = "{0}/{1}/{2}".format(const.pwdpath, const.jobfilepath, eqpointlist[0])
+            needcalcEQ = True
+            if os.path.exists("%s/end.txt"%dirname):
+                needcalcEQ = False
+            elif os.path.exists("%s/running.txt"%dirname):
+                needcalcEQ = False
+            #elif "%s/end.txt"%eqpointlist[0] in tr.getmembers():
+                #needcalcEQ = False
+            else:
+                for mem in tr.getmembers():
+                    if eqpointlist[0] in mem.name:
+                        if "end.txt" in mem.name:
+                            needcalcEQ = False
+                            break
+            if needcalcEQ:
                 break
-        if walloutQ:
-            continue
-        dirname = "{0}/{1}/{2}".format(const.pwdpath, const.jobfilepath, eqpointlist[0])
-        if os.path.exists("%s/end.txt"%dirname):
-            continue
-        elif os.path.exists("%s/running.txt"%dirname):
-            continue
         else:
-            break
-    else:
-        dirname = False
-        eqpoint = False
+            dirname = False
+            eqpoint = False
     if not dirname is False:
+        if not os.path.exists(dirname):
+            os.mkdir(dirname)
         with open("%s/running.txt"%dirname, "w") as wf:
             wf.write("running")
     else:
@@ -415,14 +447,32 @@ def chkTSpath_exclusion(tslist, const):
     lock = fasteners.InterProcessLock(lockfilepath)
     lock.acquire()
     returntspointlist = False
-    for tspointlist in tslist:
-        tspoint = tspointlist[1:-1]
-        dirname = "{0}/{1}/{2}".format(const.pwdpath, const.jobfilepath, tspointlist[0])
-        if not os.path.exists("%s/end.txt"%dirname):
-            if not os.path.exists("%s/running.txt"%dirname):
+    tarfilename = "%s/%s/dirTS.tar"%(const.pwdpath, const.jobfilepath)
+    if not os.path.exists(tarfilename):
+        return returntspointlist
+    with tarfile.open(tarfilename, "r:") as tr:
+        for tspointlist in tslist:
+            tspoint = tspointlist[1:-1]
+            dirname = "{0}/{1}/{2}".format(const.pwdpath, const.jobfilepath, tspointlist[0])
+            #print("%s/end.txt"%tspointlist[0])
+            needcalcTS = True
+            if os.path.exists("%s/end.txt"%dirname):
+                needcalcTS = False
+            elif os.path.exists("%s/running.txt"%dirname):
+                needcalcTS = False
+            #elif "%s/end.txt"%tspointlist[0] in tr.getmembers():
+            else:
+                for mem in tr.getmembers():
+                    if tspointlist[0] in mem.name:
+                        if "end.txt" in mem.name:
+                            needcalcTS = False
+                            break
+            if needcalcTS:
                 returntspointlist = tspointlist
                 break
-    if not dirname is False:
+    if not returntspointlist is False:
+        if not os.path.exists(dirname):
+            os.mkdir(dirname)
         with open("%s/running.txt"%dirname, "w") as wf:
             wf.write("running")
     lock.release()
@@ -442,6 +492,18 @@ def writeEND_exclusion(dirname, dirtype, const):
         os.remove("%s/running.txt"%dirname)
     with open("%s/end.txt"%dirname, "w") as wf:
         wf.write("calculated")
+    tarfilename = "%s/%s/dir%s.tar"%(const.pwdpath, const.jobfilepath,dirtype)
+    dirname_saves = dirname.split("/")
+    dirname_saves.reverse()
+    for dirname_save in dirname_saves:
+        if dirtype in dirname_save:
+            break
+    else:
+        print("ERROR; %s is not dir of %s"%(dirname, dirtype))
+    with tarfile.open(tarfilename, "a:") as ta:
+        ta.add(dirname_save)
+    #shutil.rmtree(dirname)
+    shutil.rmtree(dirname_save)
     lock.release()
 def exportconnectionlist_exclusion(tspointname, eqpointname, const):
     lockfilepath_list = const.lockfilepath + "_connection"

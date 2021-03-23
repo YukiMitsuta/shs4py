@@ -71,7 +71,6 @@ def SHSearch(f, grad, hessian,
         tslist = IOpack.importlist_exclusion(tslistpath, const)
     else:
         eqlist        = None
-        tslist        = None
         initialpoints = None
     if const.calc_mpiQ:
         eqlist        = SHScomm.bcast(eqlist, root = 0)
@@ -79,6 +78,8 @@ def SHSearch(f, grad, hessian,
 
     for initialpoint in initialpoints:
         eqpoint, eqhess_inv = OPT.PoppinsMinimize(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, const)
+        if eqpoint is False:
+            continue
 
         EQhess = hessian(eqpoint)
         eigNlist, _eigV = np.linalg.eigh(EQhess)
@@ -97,10 +98,11 @@ def SHSearch(f, grad, hessian,
             if SHSrank == SHSroot:
                 if 0.0 < min(eigNlist):
                     eqlist, tslist, pointname = IOpack.chksamepoint_exportlist("EQ", eqlist, tslist, eqpoint, f_point, const)
-                elif 0.0 < eigNlist[1]:
-                    eqlist, tslist, pointname = IOpack.chksamepoint_exportlist("TS", eqlist, tslist, eqpoint, f_point, const)
+                #elif 0.0 < eigNlist[1]:
+                    #eqlist, tslist, pointname = IOpack.chksamepoint_exportlist("TS", eqlist, tslist, eqpoint, f_point, const)
                 else:
-                    print("%s is not EQ or TS point: eigN = %s"%(eqpoint, eigNlist), flush = True)
+                    print("%s is not EQ point: eigN = %s"%(eqpoint, eigNlist), flush = True)
+                    #print("%s is not EQ or TS point: eigN = %s"%(eqpoint, eigNlist), flush = True)
             else:
                 eqlist = None
                 tslist = None
@@ -210,6 +212,8 @@ def SHSearch(f, grad, hessian,
                     print("this point is not ts point", flush = True)
                     print(eigNlist, flush = True)
                 eqpoint, eqhess_inv = OPT.PoppinsMinimize(tspoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, const)
+                if eqpoint is False:
+                    continue
                 EQhess = hessian(eqpoint)
                 eigNlist, _eigV = np.linalg.eigh(EQhess)
                 f_eqpoint = f(eqpoint)
@@ -267,7 +271,8 @@ def SHSearch(f, grad, hessian,
                 if tslist is False:
                     exit()
         if SHSrank == SHSroot:
-            IOpack.writeEND_exclusion(dirname, "TS", const)
+            #IOpack.writeEND_exclusion(dirname, "TS", const)
+            IOpack.writeEND_exclusion(dirname, "EQ", const)
             tslist = IOpack.importlist_exclusion(tslistpath, const)
         else:
             tslist = None
@@ -296,6 +301,8 @@ def SHSearch(f, grad, hessian,
                 #if const.calc_mpiQ:
                     #nearEQpoint = SHScomm.bcast(nearEQpoint, root = 0)
                 eqpoint, eqhess_inv = OPT.PoppinsMinimize(nearEQpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, const)
+                if eqpoint is False:
+                    continue
                 beforeeqpoint = functions.periodicpoint(nearEQpoint, const, eqpoint)
                 dis = beforeeqpoint - eqpoint
                 if type(const.sameEQthreshold) is float:
@@ -351,26 +358,29 @@ def SHSearch(f, grad, hessian,
                     #os.remove("%s/running.txt"%dirname)
                 #with open("%s/end.txt"%dirname, "w") as wf:
                     #wf.write("calculated")
-                IOpack.writeEND_exclusion(dirname, "EQ", const)
+                #IOpack.writeEND_exclusion(dirname, "EQ", const)
+                IOpack.writeEND_exclusion(dirname, "TS", const)
+                #if os.path.exists(dirname):
+                    #shutil.rmtree(dirname)
             if const.calc_mpiQ:
                 eqlist        = SHScomm.bcast(eqlist, root = 0)
-        if SHSrank == SHSroot:
-            notbreakQ = False
-            for dirname in glob.glob("EQ*"):
-                if not os.path.exists("%s/end.txt"%dirname):
-                    notbreakQ = True
-                    break
-            for dirname in glob.glob("TS*"):
-                if not os.path.exists("%s/end.txt"%dirname):
-                    notbreakQ = True
-                    break
-        else:
-            notbreakQ = None
-        if const.calc_mpiQ:
-            notbreakQ = SHScomm.bcast(notbreakQ, root = 0)
-        if notbreakQ:
-            continue
-        break
+#        if SHSrank == SHSroot:
+#            notbreakQ = False
+#            for dirname in glob.glob("EQ*"):
+#                if not os.path.exists("%s/end.txt"%dirname):
+#                    notbreakQ = True
+#                    break
+#            for dirname in glob.glob("TS*"):
+#                if not os.path.exists("%s/end.txt"%dirname):
+#                    notbreakQ = True
+#                    break
+#        else:
+#            notbreakQ = None
+#        if const.calc_mpiQ:
+#            notbreakQ = SHScomm.bcast(notbreakQ, root = 0)
+#        if notbreakQ:
+#            continue
+#        break
     if SHSrank == SHSroot:
         print("ALL ADDs on EQ and TS points are calculated.")
 

@@ -564,11 +564,13 @@ def main(eqpoint, f, grad, hessian, dirname, optdigTH, SHSrank, SHSroot, SHScomm
         for ADDth in ADDths:
             ADDth.grad     = grad(ADDth.x)
             ADDth.grad_vec = np.dot(ADDth.grad, ADDth.nADD/np.linalg.norm(ADDth.nADD))
+            ADDth.grad_norm = np.linalg.norm(ADDth.grad)
             if ADDth.findTSQ:
                 writeline += " % 5.2f,"%0.0
             else:
-                writeline += " % 5.2f,"%ADDth.grad_vec
-                if ADDth.grad_vec < 0.0:
+                writeline += " % 5.2f,"%ADDth.grad_norm
+                #if sphereN > 5 and ADDth.grad_vec < 0.0:
+                if ADDth.grad_norm < const.threshold:
                     if SHSrank == SHSroot:
                         print("New TS point is found.", flush = True)
                     ADDth.findTSQ = True
@@ -929,8 +931,9 @@ def Opt_hyper_sphere(ADDths, f, grad, eqpoint, eigNlist, eigVlist, IOEsphereA, I
             with open("./ADDpoints.csv", "a")  as wf:
                     wf.write(writeline)
     if SHSrank == SHSroot:
-        with open("./sphere.txt", "a")  as wf:
-            wf.write(spherestr)
+        if spherestr is not False:
+            with open("./sphere.txt", "a")  as wf:
+                wf.write(spherestr)
     return ADDths, IOEsphereA
 def updateCupyData(metaDclass, ADDth, IOEsphereA, eqpoint, eigNlist, eigVlist, const):
     return

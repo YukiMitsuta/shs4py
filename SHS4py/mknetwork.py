@@ -13,6 +13,8 @@ import subprocess as sp
 import networkx as nx
 import numpy as np
 
+from SHS4py import VESanalyzer, mkconst
+
 if True:
     import pyximport  # for cython
     pyximport.install()
@@ -40,6 +42,7 @@ def main():
         
     """
     constC = constClass()
+    constC = mkconst.main(constC)
     
     constC.Temp    = 300.0           # tempeture (K)
 
@@ -48,6 +51,14 @@ def main():
     N_A            = 6.002214e23      # Avogadro constant (mol^-1)
     constC.betainv = constC.Temp * k_B * N_A # 1/beta (kJ / mol)
     constC.beta    = 1.0 / constC.betainv
+
+    comm = None
+    rank = 0
+    root = 0
+    size = 1
+    plumedpath = './plumed.dat'
+    VESclass = VESanalyzer.VESpotential(plumedpath, constC, rank, root, size, comm)
+    
     felimit = 99999
     zlist = range(36)
     eqlist_all = []
@@ -57,6 +68,12 @@ def main():
     eqpointindex = 0
     exporttsstr = ""
     tspointindex = 0
+    for line in open("./diff_inner.csv"):
+        angdiff_inner = float(line)
+        break
+    for line in open("./diff_outer.csv"):
+        angdiff_outer = float(line)
+        break
 
     for z in zlist:
         eqlist, tslist, connections, fricdic = importpoints(z)
@@ -84,13 +101,13 @@ def main():
                 continue
             eqpoint_femin = eqpoint
             break
-        eqlist_connected = []
-        for eqpoint in eqlist:
-            if not eqpoint.name in G.nodes():
-                continue
-            if nx.has_path(G, eqpoint_femin.name, eqpoint.name):
-                eqlist_connected.append(eqpoint)
-        eqlist = eqlist_connected
+        #eqlist_connected = []
+        #for eqpoint in eqlist:
+            #if not eqpoint.name in G.nodes():
+                #continue
+            #if nx.has_path(G, eqpoint_femin.name, eqpoint.name):
+                #eqlist_connected.append(eqpoint)
+        #eqlist = eqlist_connected
         tslist_connected = []
         for tspoint in tslist:
             if not tspoint.name in G.nodes():
@@ -119,7 +136,7 @@ def main():
             deltafe = tspoint.fe - eqpoint1.fe
             #print(tspoint)
             #print(fricdic.keys())
-            k = fricdic[tspoint.name] * np.exp(- constC.beta * deltafe)
+            k = fricdic[(eqpoint1.name, tspoint.name)] * np.exp(- constC.beta * deltafe)
             #eqedge = (eqpoint1.name, eqpoint2.name)
             eqedge = (eqpoint1.networkname, eqpoint2.networkname)
             if eqedge in connections_all.keys():
@@ -128,7 +145,7 @@ def main():
                 connections_all[eqedge] = k
 
             deltafe = tspoint.fe - eqpoint2.fe
-            k = fricdic[tspoint.name] * np.exp(- constC.beta * deltafe)
+            k = fricdic[(eqpoint2.name, tspoint.name)] * np.exp(- constC.beta * deltafe)
             eqedge = (eqpoint2.networkname, eqpoint1.networkname)
             if eqedge in connections_all.keys():
                 connections_all[eqedge] += k
@@ -144,11 +161,19 @@ def main():
             exporttsstr += ", %s\n"%tspoint.fe
         zfric = float(open("./jobfiles_%s/fric_z.csv"%z).readline())
         z_before = z - 1.0
+        if z < 25.0:
+            angfric = angdiff_inner
+        else:
+            angfric = angdiff_outer
+        if z_before < 25.0:
+            angfric_before = angdiff_inner
+        else:
+            angfric_before = angdiff_outer
         #if 0 <= z_before < 35:
         if z != 0:
-            connections_all = calcMarcofFric(eqlist, zfric,
-                    eqlist_before, zfric_before, 
-                    connections_all, constC)
+            connections_all = calcMarcofFric(eqlist, z, zfric,
+                    eqlist_before, zfric_before, angfric, angfric_before,
+                    connections_all, constC, VESclass)
 
         eqlist_before = eqlist
         tslist_before = tslist
@@ -190,48 +215,64 @@ def importpoints(z):
         line = line.replace("\n","").split(", ")
         connections.append(line)
     fricdic = {}
-    for line in open("./jobfiles_%s/friclist.csv"%z):
+    for line in open("./jobfiles_%s/Frequencylist.csv"%z):
         if "#" in line:
             continue
         line = line.replace("\n","").split(", ")
-        fricdic[line[0]] = float(line[1])
+        fricdic[(line[0], line[1])] = float(line[2])
 
     return eqlist, tslist, connections, fricdic
-def calcMarcofFric(eqlist, zfric, eqlist_before, zfric_before, connections_all, constC):
+def calcMarcofFric(eqlist, z, zfric, 
+        eqlist_before, zfric_before, angfric, angfric_before,
+        connections_all, constC, VESclass):
     zfricabs = (zfric + zfric_before) * 0.5
     connectedpointN = 0
     for eqpoint in eqlist:
-        beforeEQ = False
+        #beforeEQ = False
+        #beforeEQlen = 1.0e30
         for eqpoint_before in eqlist_before:
             beforepoint = periodicpoint(eqpoint_before.point, constC, eqpoint.point)
-            samepointQ = True
-            for i in range(len(eqpoint.point)):
-                if 0.1 < abs(beforepoint[i] - eqpoint.point[i]):
-                    samepointQ = False
-                    break
-            if samepointQ:
-                beforeEQ = eqpoint_before
-                break
-        if beforeEQ is False:
-            continue
-        connectedpointN += 1
+            EQlen = np.linalg.norm(beforepoint - eqpoint.point)
+            #if EQlen < beforeEQlen:
+                #beforeEQlen = EQlen
+                #beforeEQ = eqpoint_before
+            #if beforeEQlen < 0.5:
+            if 0.5 < EQlen:
+                continue
+            print("%s -> %s; EQlen = %s"%(eqpoint.name, eqpoint_before.name, EQlen))
+            connectedpointN += 1
+            deltafe = eqpoint_before.fe - eqpoint.fe
+            k_z = zfricabs * np.exp(- constC.beta * deltafe * 0.5)
+            beforeFE = VESclass.f(np.array(list(eqpoint.point) + [z-1]))
+            deltafe =  beforeFE - eqpoint.fe
+            k_ang = angfric_before/EQlen/EQlen * np.exp(- constC.beta * deltafe * 0.5)
+            #k = (k_z*k_ang)/np.sqrt(k_z*k_z+k_ang*k_ang)
+            k = (k_z*k_ang)/(k_z+k_ang)
+            eqedge = (eqpoint.networkname, eqpoint_before.networkname)
+            if eqedge in connections_all.keys():
+                connections_all[eqedge] += k
+            else:
+                connections_all[eqedge] = k
 
-        deltafe = beforeEQ.fe - eqpoint.fe
-        k = zfricabs * np.exp(- constC.beta * deltafe * 0.5)
-        eqedge = (eqpoint.networkname, eqpoint_before.networkname)
-        if eqedge in connections_all.keys():
-            connections_all[eqedge] += k
-        else:
-            connections_all[eqedge] = k
-
-        deltafe = eqpoint.fe - beforeEQ.fe
-        #k = zfric_before * np.exp(- deltafe * 0.5 / constC.Temp)
-        k = zfricabs * np.exp(- constC.beta * deltafe * 0.5)
-        eqedge = (beforeEQ.networkname, eqpoint.networkname)
-        if eqedge in connections_all.keys():
-            connections_all[eqedge] += k
-        else:
-            connections_all[eqedge] = k
+#    for eqpoint_before in eqlist_before:
+#        for eqpoint in eqlist:
+#            beforepoint = periodicpoint(eqpoint_before.point, constC, eqpoint.point)
+#            EQlen = np.linalg.norm(beforepoint - eqpoint.point)
+#            if 0.5 < EQlen:
+#                continue
+#            print("%s; EQlen = %s"%(eqpoint.name, EQlen))
+            deltafe = eqpoint.fe - eqpoint_before.fe
+            k_z = zfricabs * np.exp(- constC.beta * deltafe * 0.5)
+            pointFE = VESclass.f(np.array(list(eqpoint_before.point) + [z]))
+            deltafe = pointFE - eqpoint_before.fe
+            k_ang = angfric/EQlen/EQlen * np.exp(- constC.beta * deltafe * 0.5)
+            #k = (k_z*k_ang)/np.sqrt(k_z*k_z+k_ang*k_ang)
+            k = (k_z*k_ang)/(k_z+k_ang)
+            eqedge = (eqpoint_before.networkname, eqpoint.networkname)
+            if eqedge in connections_all.keys():
+                connections_all[eqedge] += k
+            else:
+                connections_all[eqedge] = k
     print("connectedpointN = %s"%connectedpointN)
     return connections_all
 def periodicpoint(x, const, beforepoint = False):
