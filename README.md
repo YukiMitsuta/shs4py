@@ -38,8 +38,8 @@ Mitsuta, Yuki, and Yasuteru Shigeta. "Analytical Method Using a Scaled Hypersphe
 # Author
 
 * Yuki Mitsuta (満田祐樹）
-* Center for Computational Sciences, University of Tsukuba
-* E-mail: mitsutay[at]ccs.tsukuba.ac.jp
+* Department of Chemistory, Graduate School of Science, Osaka Prefecture University
+* E-mail: mitsutay[at]c.s.osakafu-u.ac.jp
 
 # License
 
