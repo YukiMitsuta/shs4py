@@ -209,8 +209,9 @@ def main(const):
         #t_delta = const.t_delta
         t += t_delta
         #print("t, t_delta = %s, %s"%(t,t_delta))
-        if 1.0/const.k_min < t:
-            break
+        if const.k_min != 0.0:
+            if 1.0/const.k_min < t:
+                break
         Kmat_delta = Kmat * t_delta
         Qdelta = Kmat_delta.dot(stateQ)
         totalP_minus = 0.0

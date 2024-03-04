@@ -11,15 +11,15 @@ import copy
 import tarfile
 import subprocess as sp
 import numpy as np
-#import functions
+from . import functions
 from mpi4py import MPI
-if True:
-    import pyximport  # for cython
-    pyximport.install()
-    try:
-        from . import calcRCMC
-    except ImportError:
-        import calcRCMC
+#if True:
+    #import pyximport  # for cython
+    #pyximport.install()
+    #try:
+        #from . import calcRCMC
+    #except ImportError:
+        #import calcRCMC
 
 from sklearn.linear_model import Ridge,LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
@@ -150,7 +150,7 @@ def main(const):
                     eqconnectlist.append(eqconnect)
             for eqconnect in eqconnectlist:
                 freq = diff / MFEPlength / MFEPlength
-                print("%s; freqency factor = % 10.8f"%(tsname, freq), flush =True)
+                #print("%s; freqency factor = % 10.8f"%(tsname, freq), flush =True)
                 writeline += "%s, %s, %s\n"%(eqconnect, tsname, freq)
     with open("./%s/Frequencylist.csv"%const.jobfilepath, "w") as wf:
         wf.write(writeline)
@@ -169,7 +169,9 @@ def periodicpoint(x, const, beforepoint = False):
     """
     #print("x =%s"%x)
     #print("beforepoint =%s"%beforepoint)
-    dis, bdamp = calcRCMC.periodicpoint(x, const.periodicmax, const.periodicmin, beforepoint)
+    #dis, bdamp = calcRCMC.periodicpoint(x, const.periodicmax, const.periodicmin, beforepoint)
+    bdamp = functions.periodicpoint(x, const, beforepoint)
+    dis = np.linalg.norm(bdamp - x)
     return dis
 #    bdamp = copy.copy(x)
 #    if const.periodicQ:
@@ -197,9 +199,12 @@ def periodicpoint(x, const, beforepoint = False):
 #    return np.linalg.norm(bdamp)
 def calcdiff(x, y):
     degree = 1
+    #x = np.array(x[1:])
+    #y = np.array(y[1:])
     x = np.array(x)
     y = np.array(y)
-    model = make_pipeline(PolynomialFeatures(degree,include_bias=False),LinearRegression(fit_intercept=False))
+    #model = make_pipeline(PolynomialFeatures(degree,include_bias=False),LinearRegression(fit_intercept=False))
+    model = make_pipeline(PolynomialFeatures(degree,include_bias=False),LinearRegression(fit_intercept=True))
     model.fit(x.reshape(-1,1),y)
     y_model=model.predict(x.reshape(-1,1))
     #from sklearn.metrics import mean_squared_error
@@ -236,24 +241,40 @@ def makediff(const):
                 continue
             i += 1
             line = line.split()
-            #t    = float(line[0])
-            t    = int(float(line[0]))
+            #if len(line) < 6:
+                #continue
+            t    = float(line[0])
+            #t    = int(float(line[0])*100)*0.01
             #if t < 50000.0:
                 #continue
             if const.useZpozitionQ:
                 p    = np.array(line[1:-1], dtype = float)
                 z    = float(line[-1])
+                if initialpoint is not False:
+                    if 30.0  < abs(z) and initialpoint_z * z < 0.0:
+                        print("there is Periodic move along z")
+                        initialpoint = False
+                        #exit()
+                        #continue
             else:
                 p    = np.array(line[1:], dtype = float)
+            #if len(p) < 4:
+                #continue
             if initialpoint is False:
                 initialpoint = p
-                initial_t = t
+                #initial_t = t
+                initial_t = 0.0
+                delta_t = 0.0
                 if const.useZpozitionQ:
-                    initialpoint_z = z
-            delta_t = t - initial_t
+                    initialpoint_z = copy.copy(z)
+            else:
+                #delta_t = t - initial_t
+                delta_t = float(delta_t)
+                delta_t += const.tdelta
             tlist.append(delta_t)
             dis = periodicpoint(p, const, initialpoint)
             dis2 = dis * dis
+            #delta_t = int(delta_t*100)*0.01
             delta_t = str(delta_t)
             if const.useZpozitionQ:
                 dis2_z = initialpoint_z - z
@@ -267,6 +288,13 @@ def makediff(const):
                         rsqlistdic_z[delta_t] = [dis2_z]
                 else:
                     #print("len(rsqlistdic_outside) = %s"%len(rsqlistdic_outside))
+                    #print("initialpoint_z = %s"%initialpoint_z)
+                    #print("z = %s"%z)
+                    #print("len(tlist) = %s"%len(tlist))
+                    #print("dis2_z = %s"%dis2_z)
+                    if 30.0 < dis2_z:
+                        initialpoint = False
+                        continue
                     if delta_t in rsqlistdic_outside:
                         rsqlistdic_outside[delta_t].append(dis2)
                         rsqlistdic_z_outside[delta_t].append(dis2_z)
@@ -280,7 +308,9 @@ def makediff(const):
                     rsqlistdic[delta_t] = [dis2]
             #rsqlist.append(dis2)
             #MSDlist.append(np.mean(rsqlist))
-            if 10 <= len(tlist):
+            if const.trange <= float(delta_t):
+            #if 20 <= float(delta_t):
+            #if 10 <= len(tlist):
             #if 25*25 < dis2_z:
                 #diff = calcdiff(tlist, MSDlist)
                 #diff = diff / 2.0 / len(p)
@@ -401,7 +431,9 @@ def makediff(const):
     MSDlist_P = []
     MSDlist_M = []
     for t in tlist:
-        rsqlist = np.array(rsqlistdic[str(int(t))])
+        #rsqlist = np.array(rsqlistdic[str(int(t))])
+        #t = int(float(t)*100)*0.01
+        rsqlist = np.array(rsqlistdic[str(t)])
         std_error = np.std(rsqlist) / np.sqrt(len(rsqlist))
         print("%s, %s"%(t,np.mean(rsqlist)))
         MSDlist.append(np.mean(rsqlist))
@@ -430,17 +462,19 @@ def makediff(const):
             tlist.append(float(t))
             rsqlist = np.array(rsqlistdic_z[t])
             std_error = np.std(rsqlist) / np.sqrt(len(rsqlist))
+            print("%s, %s"%(t,np.mean(rsqlist)))
             MSDlist.append(np.mean(rsqlist))
             MSDlist_P.append(np.mean(rsqlist)+std_error)
             MSDlist_M.append(np.mean(rsqlist)-std_error)
         print("len(tlist) = %s"%len(tlist))
         print("len(MSDlist) = %s"%len(MSDlist))
+        #exit()
         diff_z = calcdiff(tlist, MSDlist)
         diff_z = diff_z / 2.0 
         diff_z_P = calcdiff(tlist, MSDlist_P)
-        diff_z_P = diff_z_P / 2.0 / len(p)
+        diff_z_P = diff_z_P / 2.0
         diff_z_M = calcdiff(tlist, MSDlist_M)
-        diff_z_M = diff_z_M / 2.0 / len(p)
+        diff_z_M = diff_z_M / 2.0
         tlist = []
         MSDlist = []
         MSDlist_P = []
@@ -449,6 +483,7 @@ def makediff(const):
             tlist.append(float(t))
             rsqlist = np.array(rsqlistdic_z_outside[t])
             std_error = np.std(rsqlist) / np.sqrt(len(rsqlist))
+            print("%s, %s"%(t,np.mean(rsqlist)))
             MSDlist.append(np.mean(rsqlist))
             MSDlist_P.append(np.mean(rsqlist)+std_error)
             MSDlist_M.append(np.mean(rsqlist)-std_error)
@@ -457,9 +492,9 @@ def makediff(const):
         diff_z_outside = calcdiff(tlist, MSDlist)
         diff_z_outside = diff_z_outside / 2.0
         diff_z_outside_P = calcdiff(tlist, MSDlist_P)
-        diff_z_outside_P = diff_z_outside_P / 2.0 / len(p)
+        diff_z_outside_P = diff_z_outside_P / 2.0
         diff_z_outside_M = calcdiff(tlist, MSDlist_M)
-        diff_z_outside_M = diff_z_outside_M / 2.0 / len(p)
+        diff_z_outside_M = diff_z_outside_M / 2.0
         tlist = []
         MSDlist = []
         MSDlist_P = []
@@ -468,6 +503,7 @@ def makediff(const):
             tlist.append(float(t))
             rsqlist = np.array(rsqlistdic_outside[t])
             std_error = np.std(rsqlist) / np.sqrt(len(rsqlist))
+            print("%s, %s"%(t,np.mean(rsqlist)))
             MSDlist.append(np.mean(rsqlist))
             MSDlist_P.append(np.mean(rsqlist)+std_error)
             MSDlist_M.append(np.mean(rsqlist)-std_error)
@@ -499,10 +535,13 @@ def makediff(const):
         with open("./diff_stderrorDown.csv", "w") as wf:
             wf.write("%s\n0.0"%(diff_M))
 
-    if const.zpozition < 25.0:
-        returnlist = [diff, diff_z]
+    if const.useZpozitionQ:
+        if const.zpozition < 25.0:
+            returnlist = [diff, diff_z]
+        else:
+            returnlist = [diff_outside, diff_z_outside]
     else:
-        returnlist = [diff_outside, diff_z_outside]
+        returnlist = [diff, diff_z]
     return returnlist
 if __name__ == "__main__":
     main()

@@ -103,7 +103,7 @@ def exportlist_exclusion(fname, newlist, headline, const):
     lock.release()
     #print("End exportlist_exclusion", flush = True)
     return returnlist
-def mkdir_exclusion(dirkind, fileN, const):
+def mkdir_exclusion(dirkind, fileN, beforepointlist, const):
     """
     set exclusion control
     Directry Booking System
@@ -127,28 +127,47 @@ def mkdir_exclusion(dirkind, fileN, const):
 #                if const.moveQ:
 #                    os.mkdir("{0}/{1}/{2}{3:0>4}".format(const.tmppath, const.jobfilepath, dirkind, num + i))
 #            break
-    tarfilename = "%s/%s/dir%s.tar"%(const.pwdpath, const.jobfilepath,dirkind)
-    if os.path.exists(tarfilename):
-        with tarfile.open(tarfilename, "r:") as tr:
-            nummax = 1000000
-            for num in range(1,nummax):
-                filename0 = "{0}{1:0>4}".format(dirkind, num)
-                for tarname in tr.getnames():
-                    if filename0 in tarname:
-                        break
-                else:
+
+#    tarfilename = "%s/%s/dir%s.tar"%(const.pwdpath, const.jobfilepath,dirkind)
+#    if os.path.exists(tarfilename):
+#        with tarfile.open(tarfilename, "r:") as tr:
+#            nummax = 1000000
+#            for num in range(1,nummax):
+#                filename0 = "{0}{1:0>4}".format(dirkind, num)
+#                for tarname in tr.getnames():
+#                    if filename0 in tarname:
+#                        break
+#                else:
+#                    break
+#            else:
+#                nummaxOverQ = True
+#    else:
+#        num = 1
+
+    nummaxOverQ = False
+    if len(beforepointlist) == 0:
+        num = 1
+    else:
+        nummax = 1000000
+        for num in range(1,nummax):
+            filename0 = "{0}{1:0>4}".format(dirkind, num)
+            for beforepoint in beforepointlist:
+                beforepointname = beforepoint[0]
+                if filename0 == beforepointname:
                     break
             else:
-                nummaxOverQ = True
-    else:
-        num = 1
+                break
+        else:
+            nummaxOverQ = True
+
     waitfilestr =""
-    with tarfile.open(tarfilename, "a:") as ta:
+    #with tarfile.open(tarfilename, "a:") as ta:
+    if True:
         for i in range(fileN):
             filename = "{0}{1:0>4}".format(dirkind, num + i)
-            os.mkdir(filename)
-            ta.add(filename)
-            os.rmdir(filename)
+            #os.mkdir(filename)
+            #ta.add(filename)
+            #os.rmdir(filename)
             #if i == 0:
                 #waitfilestr += filename
             #else:
@@ -417,7 +436,8 @@ def findEQpath_exclusion(eqlist, const):
     lock.acquire()
     dirname = False
     eqpoint = False
-    eqlist = sorted(eqlist, key = lambda x:x[-1])
+    if const.findEQsortQ:
+        eqlist = sorted(eqlist, key = lambda x:x[-1])
 #    tarfilename = "%s/%s/dirEQ.tar"%(const.pwdpath, const.jobfilepath)
 #    with tarfile.open(tarfilename, "r:") as tr:
 #        for eqpointlist in eqlist:
@@ -452,7 +472,11 @@ def findEQpath_exclusion(eqlist, const):
     waitEQs = []
     for line in open(waitfilename):
         waitEQs.append(line.replace("\n",""))
+    eqfemin = min(x[-1] for x in eqlist)
     for eqpointlist in eqlist:
+        if const.EQfeMax < eqpointlist[-1]-eqfemin:
+            dirname=False
+            break
         eqname = eqpointlist[0]
         dirname_damp = "{0}/{1}/{2}".format(const.pwdpath, const.jobfilepath, eqpointlist[0])
         if not eqname in waitEQs:
@@ -508,9 +532,10 @@ def chkTSpath_exclusion(tslist, const):
 #                break
     waitfilename = "{0}/{1}/ts_wait.csv".format(const.pwdpath, const.jobfilepath)
     waitTSs = []
-    for line in open(waitfilename):
-        waitTSs.append(line.replace("\n",""))
-    
+    if os.path.exists(waitfilename):
+        for line in open(waitfilename):
+            waitTSs.append(line.replace("\n",""))
+
     for waitTSname in waitTSs:
         needcalcTS = True
         dirname = "{0}/{1}/{2}".format(const.pwdpath, const.jobfilepath, waitTSname)
@@ -525,11 +550,18 @@ def chkTSpath_exclusion(tslist, const):
                     break
             break
     if not returntspointlist is False:
+    #if needcalcTS:
         if not os.path.exists(dirname):
             os.mkdir(dirname)
         with open("%s/running.txt"%dirname, "w") as wf:
             wf.write("running")
     lock.release()
+    #if not returntspointlist is False:
+    #if needcalcTS:
+        #for tspointlist in tslist:
+            #if tspointlist[0] == waitTSname:
+                #returntspointlist = tspointlist
+                #break
     print("End chkTSpath_exclusion", flush = True)
     return returntspointlist
 def writeEND_exclusion(dirname, dirtype, const):
@@ -569,7 +601,7 @@ def writeEND_exclusion(dirname, dirtype, const):
     with open(waitfilename,"w") as wf:
         wf.write(waitstr)
     lock.release()
-def exportconnectionlist_exclusion(tspointname, eqpointname, const):
+def exportconnectionlist_exclusion(tspointname, eqpointname, deltax, deltaf, const):
     lockfilepath_list = const.lockfilepath + "_connection"
     with open(lockfilepath_list, "w") as wf:
         wf.write("")
@@ -577,15 +609,18 @@ def exportconnectionlist_exclusion(tspointname, eqpointname, const):
     lock.acquire()
     with open("%s/%s/connections.csv"%(const.pwdpath, const.jobfilepath), "a") as wf:
         wf.write("%s, %s\n"%(tspointname, eqpointname))
+    with open("%s/%s/activationFE.csv"%(const.pwdpath, const.jobfilepath), "a") as wf:
+        wf.write("%s, %s, %s, %s\n"%(eqpointname,tspointname,deltax, deltaf))
     lock.release()
 def chksamepoint_exportlist(pointtype, eqlist, tslist, point, f_point, const):
     lockfilepath = const.lockfilepath + "_chksamepoint"
     if not os.path.exists(lockfilepath):
         with open(lockfilepath, "w") as wf:
             wf.write("")
-    #print("Waiting chkTSpath_exclusion", flush = True)
+    #print("Waiting chksamepoint_exclusion", flush = True)
     lock = fasteners.InterProcessLock(lockfilepath)
     lock.acquire()
+    #print("Start chksamepoint_exclusion", flush = True)
     dmin = 1.0e30
     disQ = [False]
     headline = "#%sname, "%pointtype
@@ -603,10 +638,14 @@ def chksamepoint_exportlist(pointtype, eqlist, tslist, point, f_point, const):
         print("ERROR; pointtype(%s) is not EQ or TS"%pointtype)
         exit()
     for beforepoint in beforepointlist:
+        f_before = beforepoint[-1]
+        #if 0.01 < abs(f_point - f_before):
+            #continue
         beforepointname = beforepoint[0]
         beforepoint = beforepoint[1:-1]
         beforepoint = functions.periodicpoint(beforepoint, const, point)
         dis = beforepoint - point
+        #print(dis)
         if type(const.sameEQthreshold) is float:
             dis = max([abs(x) for x in dis])
             if dis < dmin:
@@ -632,7 +671,7 @@ def chksamepoint_exportlist(pointtype, eqlist, tslist, point, f_point, const):
         eqlist = False
         disQ   = False
     if disQ:
-        Pnum  = mkdir_exclusion(pointtype, 1, const)
+        Pnum  = mkdir_exclusion(pointtype, 1, beforepointlist, const)
         pointname = "{0}{1:0>4}".format(pointtype, Pnum)
         if pointtype == "EQ":
             #if len(eqlist) == 0:
@@ -661,3 +700,86 @@ def chksamepoint_exportlist(pointtype, eqlist, tslist, point, f_point, const):
         print("calculated point")
     lock.release()
     return eqlist, tslist, pointname
+def addWindowNetwork(WGraph, UI, UIlistall, const, networkpathlist = False):
+    lock_uilist = fasteners.InterProcessLock(const.lockfilepath_UIlist)
+    if not UI.stepN in WGraph.nodes():
+        WGraph.add_node(UI.stepN)
+    netpath = UI.path.split("jobfiles")[-1]
+    netpath = "%s/jobfiles/%s"%(const.pwdpath, netpath)
+    readpathQ = False
+    if networkpathlist:
+        if netpath in networkpathlist:
+            readpathQ = True
+    else:
+        if os.path.exists("%s/network.txt"%netpath):
+            readpathQ = True
+    if readpathQ:
+        #if len(UI.connections) == 0:
+        if True:
+            print("%s:finding %s/network.txt"%(datetime.datetime.now(), UI.path), flush = True)
+            UI.connections = []
+            WGraph2 = nx.read_edgelist("%s/network.txt"%UI.path, nodetype=int)
+            #if 0 in WGraph2.nodes():
+                #WGraph2.remove_node(0)
+            for nodeN in WGraph2.nodes():
+                UI.connections.append(nodeN)
+            if len(UI.connections) == 0:
+                UI.connections = [0]
+#        WGraph  = nx.compose(WGraph, WGraph2)
+    else:
+        #print("Make %s/network.txt"%UI.path, flush = True)
+        #UI.connections.append(0)
+        #with open("%s/network.txt"%UI.path, "a") as wf:
+            #wf.write("%s %s\n"%(0, 0))
+        UI.connections = list(UI.connections)
+        if len(UI.connections) == 0:
+            UI.connections = [0]
+        #print("len(UIlistall) = %s"%len(UIlistall), flush = True)
+        if len(UI.connections) != 1:
+            for nearUI in UIlistall:
+                if UI.stepN == nearUI.stepN:
+                    continue
+                if UI.stepN in list(nx.all_neighbors(WGraph, nearUI.stepN)):
+                    continue
+                Dbias1 =     UI.Dbias(nearUI.ave)
+                Dbias2 = nearUI.Dbias(    UI.ave)
+                if Dbias1 < neighborwindowTH:
+                    Dbias1 = True
+                else:
+                    Dbias1 = False
+                if Dbias2 < neighborwindowTH:
+                    Dbias2 = True
+                else:
+                    Dbias2 = False
+                Dbias1 = any([Dbias1, Dbias2])
+                if Dbias1:
+                    UI.connections.append(nearUI.stepN)
+                    if not UI.stepN in nearUI.connections:
+                        nearUI.connections = nearUI.connections + [UI.stepN]
+                    WGraph.add_edge(UI.stepN, nearUI.stepN)
+                    lock_uilist.acquire()
+                    with open("%s/%s/windows/network.txt"%(const.pwdpath,const.jobfilepath), "a") as wf:
+                        wf.write("%s %s\n"%(UI.stepN, nearUI.stepN))
+                    lock_uilist.release()
+                    if os.path.exists("%s/network.txt"%nearUI.path):
+                        WGraph2 = nx.read_edgelist("%s/network.txt"%nearUI.path, nodetype=int)
+                    UIlistchunkmin = 1
+                    UIlistchunkmax = const.UIlistchunksize
+                    while True:
+                        if UIlistchunkmin <= nearUI.stepN <= UIlistchunkmax:
+                            break
+                        UIlistchunkmin += const.UIlistchunksize
+                        UIlistchunkmax += const.UIlistchunksize
+                    UIlistHDFpath = "%s/%s/windows/windowfile%s-%s.hdf5"%((const.pwdpath, const.jobfilepath), UIlistchunkmin, UIlistchunkmax)
+                    lock = fasteners.InterProcessLock(const.lockfilepath_UIlist + str(UIlistchunkmax))
+                    #windowHDF = h5py.File("%s/jobfiles/windows/windowfile.hdf5"%pwdpath, "a")
+                    lock.acquire()
+                    windowHDF = h5py.File(UIlistHDFpath, "a")
+                    windowHDF["%s/connections"%nearUI.path][...] = nearUI.connections
+                    windowHDF.flush()
+                    windowHDF.close()
+                    lock.release()
+        #with open("%s/jobfiles/windows/networkpath.txt"%pwdpath, "a") as wf:
+            #wf.write("%s/network.txt\n"%UI.path)
+        print("%s:End  %s/network.txt"%(datetime.datetime.now(), UI.path), flush = True)
+    return WGraph, UI, UIlistall

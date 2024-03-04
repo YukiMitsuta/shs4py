@@ -65,6 +65,8 @@ def main(const):
                 print("exit.txt is Found; this job is suspended", flush = True)
                 os.remove("./exit.txt")
                 findexitQ = True
+            else:
+                print("There is not exit.txt", flush = True)
             t = time.time() - start
             t /= 3600
             if const.maxtime < t:
@@ -183,6 +185,13 @@ def main(const):
                         writeline += "%10d, %s\n"%(i, stateN)
                     with open("./RCMCresult/stateN/stateN_chkpoint%05d.csv"%int(n), "w") as wf:
                         wf.write(writeline)
+                    for ip_index in range(len(stateQlistlist[-1])):
+                        writeline = "%6d"%int(n)
+                        for steteQn, stateQ in stateQlistlist[-1][ip_index]:
+                            writeline += ", %s, %s"%(steteQn, stateQ)
+                        writeline += "\n"
+                        with open("./RCMCresult/stateQ/%05d.csv"%ip_index, "a") as wf:
+                            wf.write(writeline)
             break
         if const.rank == const.root:
             with open("./RCMCresult/maxK.csv", "a") as wf:
@@ -194,7 +203,7 @@ def main(const):
         #if const.rank == const.root:
             #print("calcstateN", flush = True)
         stateNlist.append(calcstateN(n, dim, maxind, sig, stateNlist, Kmatlist, const))
-        #stateQlistlist.append(calcstateQ(n, dim, maxind, sig, stateQlistlist[-1], Kmatlist[-1], const))
+        stateQlistlist.append(calcstateQ(n, dim, maxind, sig, stateQlistlist[-1], Kmatlist[-1], const))
         if const.rank == const.root:
             print("n = %s"%int(n+1), flush = True)
 #        if const.rank == const.root:
@@ -239,7 +248,15 @@ def main(const):
                     writeline += "%10d, %s\n"%(i, stateN)
                 with open("./RCMCresult/stateN/stateN_chkpoint%05d.csv"%int(n), "w") as wf:
                     wf.write(writeline)
-            while exporttime < 1.0 / const.k_min:
+                for ip_index in range(len(stateQlistlist[-1])):
+                    writeline = "%6d"%int(n)
+                    for steteQn, stateQ in stateQlistlist[-1][ip_index]:
+                        writeline += ", %s, %s"%(steteQn, stateQ)
+                    writeline += "\n"
+                    with open("./RCMCresult/stateQ/%05d.csv"%ip_index, "a") as wf:
+                        wf.write(writeline)
+            #while exporttime < 1.0 / const.k_min:
+            while True:
                 if 1/maxK < exporttime:
                     break
                 exporttime *= 10
@@ -337,8 +354,24 @@ def makeNetwork_Markov(const):
     stateNlist = [np.exp(- (FE_dic[x] - FEmin) / const.betainv) for x in SSlist]
     totalN     = sum(stateNlist)
     stateNlist = [[x / totalN for x in stateNlist]]
-    stateQlist = [[[i,1.0]] for i in range(const.stateQN)]
-    stateQlistlist = [stateQlist]
+    if const.is_bilayer:
+        #outsidelist = []
+        stateQlist=[]
+        Ptotal = 0.0
+        for SSpoint in SSlist:
+            if not "+" in SSpoint:
+                continue
+            p = Z_dic[SSpoint]
+            if 30.0 <= p:
+                P_ss = np.exp(-(FE_dic[SSpoint]-FEmin)/const.betainv)
+                stateQlist.append([eqpointindex[SSpoint],P_ss])
+                Ptotal += P_ss
+        for i in range(len(stateQlist)):
+            stateQlist[i][1] /= Ptotal
+        stateQlistlist = [[stateQlist]]
+    else:
+        stateQlist = [[[i,1.0]] for i in range(const.stateQN)]
+        stateQlistlist = [stateQlist]
     Pmaxindexs = []
     if const.diffusionQ:
         if const.oneoutsideEQ:
@@ -860,7 +893,6 @@ def makeNetwork(const):
                     print("Error; we cannot found eqpoint_Pmax")
                     Kmat = False
 
-
         SSlistlist = [eqlist]
         if const.is_bilayer:
             stateNlist = [np.exp(- FE_dic[x[:-1]] / const.betainv) for x in eqlist]
@@ -872,7 +904,6 @@ def makeNetwork(const):
             Kmatlist = False
         else:
             Kmatlist   = [Kmat]
-
 
         n = 0
         if not os.path.exists("RCMCresult"):

@@ -58,17 +58,47 @@ def PoppinsMinimize(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, 
             for i in range(len(initialpoint)):
                 boundlist.append((initialpoint[i] + const.periodicmin[i],
                                   initialpoint[i] + const.periodicmax[i]))
-        result = minimize(f, initialpoint, jac=grad, bounds = boundlist, method="L-BFGS-B")
+        if const.optmethod == "SD":
+            stepsize = 0.001
+            x_0 = minimize_SD(f, initialpoint, grad, stepsize, const)
+            if x_0 is False:
+                return False, 0.0
+            x_0 = functions.periodicpoint(x_0, const)
+            #print("SD")
+            grad_x0    = grad(x_0)
+            print("grad_x0 = %s"%np.linalg.norm(grad_x0))
+        if const.optmethod == "L-BFGS":
+            stepsize = 1.0
+            x_0 = minimize_LBFGS(f, initialpoint, grad, stepsize, const)
+            if x_0 is False:
+                return False, 0.0
+            x_0 = functions.periodicpoint(x_0, const)
+            grad_x0    = grad(x_0)
+            print("grad_x0 = %s"%np.linalg.norm(grad_x0), flush=True)
+        elif const.optmethod == "CG":
+            result = minimize(f, initialpoint, jac=grad, method="CG")
+            x_0 = functions.periodicpoint(result.x, const)
+            grad_x0    = grad(x_0)
+            print("grad_x0 = %s"%np.linalg.norm(grad_x0))
+        else:
+            result = minimize(f, initialpoint, jac=grad, bounds = boundlist, method="L-BFGS-B")
+            x_0 = functions.periodicpoint(result.x, const)
+            print("BFGS")
+            grad_x0    = grad(x_0)
+            print("grad_x0 = %s"%np.linalg.norm(grad_x0))
     else:
         #for i in range(len(initialpoint)):
             #boundlist.append((const.wallmin[i], const.wallmax[i]))
-        result = minimize(f, initialpoint, jac=grad, method="L-BFGS-B")
+        #result = minimize(f, initialpoint, jac=grad, method="L-BFGS-B", tol=const.minimize_threshold)
+        #result = minimize(f, initialpoint, jac=grad, method="L-BFGS-B")
+        result = minimize(f, initialpoint, jac=grad, method="SLSQP")
+        x_0 = functions.periodicpoint(result.x, const)
 
-    x_0 = functions.periodicpoint(result.x, const)
     #exit()
     #return x_0, result.hess_inv
-    grad_x0    = grad(x_0)
-    if const.threshold < np.linalg.norm(grad_x0):
+    #grad_x0    = grad(x_0)
+    #print("grad_x0 = %s"%np.linalg.norm(grad_x0))
+    if const.OPTthreshold < np.linalg.norm(grad_x0):
         return False, 0.0
     return x_0, 0.0
 def PoppinsNewtonRaphson(initialpoint, f, grad, hessian, const):
@@ -85,7 +115,7 @@ def PoppinsNewtonRaphson(initialpoint, f, grad, hessian, const):
         hessinv      = hessian(result)
         hessinv      = np.linalg.inv(hessinv)
         graddamp     = grad(result)
-        if np.linalg.norm(graddamp) < const.threshold:
+        if np.linalg.norm(graddamp) < const.OPTthreshold:
             break
         beforeresult = copy.copy(result)
         for x in range(dim):
@@ -103,6 +133,8 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
     x_0 = functions.periodicpoint(x_0, const)
     #print("%s: 61"%(SHSrank), flush = True)
     g0 = grad(x_0)
+    if g0 is False:
+        return False
     #print("%s: 63"%(SHSrank), flush = True)
     if np.linalg.norm(g0) == 0.0:
         return x_0
@@ -123,8 +155,13 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
             #print("%s: 74"%(SHSrank), flush = True)
             phiturnN += 1
             Etau = tau / np.linalg.norm(tau)
+            c = inspect.currentframe()
+            #print("%s in OPT.py: x0 = %s"%(c.f_lineno,x_0),flush=True)
             g0   = grad(x_0)
+            #print("%s in OPT.py: x1 = %s"%(c.f_lineno,x1),flush=True)
             g1   = grad(x1)
+            if g0 is False or g1 is False:
+                return False
             F_R  = -2.0 * (g1 - g0) + 2.0 * np.dot(g1 - g0, Etau) * Etau
             if np.linalg.norm(F_R) == 0.0:
                 break
@@ -135,7 +172,10 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
             if abs(phi1) < const.phitol:
                 break
             x1prime   = x_0 + Etau * Ddimerdamp * np.cos(phi1) + TH * Ddimerdamp * np.sin(phi1)
+            #print("%s in OPT.py: x1prime = %s"%(c.f_lineno,x1prime),flush=True)
             g1prime   = grad(x1prime)
+            if g1prime is False:
+                return False
             tauprime  = x1prime - x_0
             Etauprime = tauprime / np.linalg.norm(tauprime)
             Ctauprime = np.dot(g1prime - g0, Etauprime) / Ddimerdamp
@@ -148,14 +188,20 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
             x1MIN   = x_0 + Etau * Ddimerdamp * np.cos(phiMIN) + TH * Ddimerdamp * np.sin(phiMIN)
             tauMIN  = x1MIN - x_0
             EtauMIN = tauMIN / np.linalg.norm(tauMIN)
+            #print("%s in OPT.py: x1MIN = %s"%(c.f_lineno,x1MIN),flush=True)
             gMIN    = grad(x1MIN)
+            if gMIN is False:
+                return False
             CtauMIN = np.dot(g1prime - g0, Etauprime) / Ddimerdamp
             if Ctau < CtauMIN:
                 phiMIN += np.pi * 0.5
             x1MIN   = x_0 + Etau * Ddimerdamp * np.cos(phiMIN) + TH * Ddimerdamp * np.sin(phiMIN)
             tauMIN  = x1MIN - x_0
             EtauMIN = tauMIN / np.linalg.norm(tauMIN)
+            #print("%s in OPT.py: x1MIN = %s"%(c.f_lineno,x1MIN),flush=True)
             gMIN    = grad(x1MIN)
+            if gMIN is False:
+                return False
             CtauMIN = np.dot(g1prime - g0, Etauprime) / Ddimerdamp
 
             x1  = copy.copy(x1MIN)
@@ -170,9 +216,9 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
             x1   = x_0 + Ddimerdamp * Egrad
             x2   = x_0 - Ddimerdamp * Egrad
             tau  = (x1 - x2) * 0.5
-            #if SHSrank == SHSroot:
-                #print("in PoppinsDimer, phiturnN over 100", flush = True)
-                #print("Ddimer is changed to %s"%Ddimerdamp, flush = True)
+            if SHSrank == SHSroot:
+                print("in PoppinsDimer, phiturnN over 100", flush = True)
+                print("Ddimer is changed to %s"%Ddimerdamp, flush = True)
             if Ddimerdamp <= const.Ddimer_max:
                 continue
             #return False
@@ -182,13 +228,29 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
             phiendQ = False
         if phiendQ:
             F_T = -g0 + 2.0 * np.dot(g0, Etau) * Etau
+            F_T = F_T/np.linalg.norm(F_T)
             if optdigTH is False:
-                result = minimize(lambda x: np.linalg.norm(grad(x_0 + F_T * x)),
-                            x0 = 0.0, method = "L-BFGS-B")
+                if SHSrank == SHSroot:
+                    print("in 226: %s:start minimize"%datetime.datetime.now(), flush = True)
+                #if const.optmethod == "CG":
+                if True:
+                    xmax = 0.1
+                    result = minimize(lambda x: np.linalg.norm(grad(x_0 + F_T * x)),
+                            x0 = 0.0, bounds = [(-xmax, xmax)], method = "L-BFGS-B")
+                            #x0 = 0.0, method = "CG")
+                else:
+                    xmax = 0.1
+                    result = minimize(lambda x: np.linalg.norm(grad(x_0 + F_T * x)),
+                            x0 = 0.0, bounds = [(0.0, xmax)], method = "L-BFGS-B")
+                            #x0 = 0.0, method = "L-BFGS-B")
                 resultx = result.x
                 x_0 = x_0 + F_T * result.x
+                if SHSrank == SHSroot:
+                    print("%s:end minimize"%datetime.datetime.now(), flush = True)
             else:
                 f_0 = f(x_0)
+                if f_0 is False:
+                    return False
                 if optdigTH < f_0:
                     if SHSrank == SHSroot:
                         c = inspect.currentframe()
@@ -200,16 +262,26 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
                 #result = minimize(lambda x: np.linalg.norm(grad(x_0 + F_T * x)),
                             #x0 = 0.0, constraints=consf, method = "cobyla")
                             #x0 = 0.0, constraints=consf, method = "SLSQP")
-                xmax = calcboundmax(x_0, F_T, f, optdigTH, const, Ddimerdamp)
                 #if SHSrank == SHSroot:
                     #print("xmax = %s"%xmax, flush = True)
-                #if SHSrank == SHSroot:
-                    #print("%s:start minimize"%datetime.datetime.now(), flush = True)
-                result = minimize(lambda x: np.linalg.norm(grad(x_0 + F_T * x, debagQ = True)),
-                            x0 = 0.0, bounds = [(0.0, xmax)], method = "L-BFGS-B")
+                if SHSrank == SHSroot:
+                    print("in 257:%s:start minimize"%datetime.datetime.now(), flush = True)
+                #if const.optmethod == "CG":
+                #if True:
+                if False:
+                    xmax = 0.1
+                    result = minimize(lambda x: np.linalg.norm(grad(x_0 + F_T * x, debagQ = True)),
+                            x0 = 0.0, bounds = [(0.0, xmax)], method = "CG")
+                            #x0 = 0.0, method = "CG")
+                else:
+                    #xmax = calcboundmax(x_0, F_T, f, optdigTH, const, Ddimerdamp)
+                    #result = minimize(lambda x: np.linalg.norm(grad(x_0 + F_T * x, debagQ = True)),
+                            #x0 = 0.0, bounds = [(0.0, xmax)], method = "L-BFGS-B")
+                    result = minimize(lambda x: np.linalg.norm(grad(x_0 + F_T * x, debagQ = True)),
+                            x0 = 0.0, bounds = [(0.0, 0.1)], method = "L-BFGS-B")
                 #print("%s: %s"%(SHSrank,xmax), flush = True)
-                #if SHSrank == SHSroot:
-                    #print("%s:end minimize"%datetime.datetime.now(), flush = True)
+                if SHSrank == SHSroot:
+                    print("%s:end minimize"%datetime.datetime.now(), flush = True)
                 resultx = result.x[0]
                 x_0 = x_0 + F_T * result.x
         else:
@@ -219,19 +291,21 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
             x1   = x_0 + Ddimerdamp * Egrad
             x2   = x_0 - Ddimerdamp * Egrad
             tau  = (x1 - x2) * 0.5
-            #if SHSrank == SHSroot:
-                #print("resultx = 0", flush = True)
-                #print("Ddimer is changed to %s"%Ddimerdamp, flush = True)
+            if SHSrank == SHSroot:
+                print("resultx = 0", flush = True)
+                print("Ddimer is changed to %s"%Ddimerdamp, flush = True)
             if Ddimerdamp <= const.Ddimer_max:
                 continue
         x_0 = functions.periodicpoint(x_0, const)
         f_0 = f(x_0)
+        if f_0 is False:
+             return False
         #if SHSrank == SHSroot:
             #print("resultx, f_0 = %s, %s"%(resultx, f_0))
         graddamp     = grad(x_0)
         if SHSrank == SHSroot:
             print("%s: norm(grad) = %s"%(whileN, np.linalg.norm(graddamp)), flush = True)
-        if np.linalg.norm(graddamp) < const.threshold:
+        if np.linalg.norm(graddamp) < const.OPTthreshold:
             return x_0
         elif optdigTH is False:
             pass
@@ -239,6 +313,7 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
             if SHSrank == SHSroot:
                 print("ERROR: %s: f(x_0) = %s over optdigTH(% 3.2f)"%(whileN, f_0, optdigTH))
             return False
+        #if False:
         #if result.x <= const.threshold:
         if resultx < 1.0e-5:
             hessinv      = hessian(x_0)
@@ -249,6 +324,8 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
                     #print("hessinv = %s"%hessinv,    flush= True)
             hessinv      = np.linalg.inv(hessinv)
             graddamp     = grad(x_0)
+            if graddamp is False:
+                return False
             dim          = len(x_0)
             #beforeresult = copy.copy(x_0)
             x_delta      = np.zeros(dim)
@@ -256,10 +333,16 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
                 for j in range(dim):
                     #x_0[i] -= hessinv[i, j] * graddamp[j]
                     x_delta[i] -= hessinv[i, j] * graddamp[j]
-            f_next = f(x_0 + x_delta)
-            #if SHSrank == SHSroot:
+            if np.linalg.norm(x_delta) > const.deltas0:
+                x_delta = x_delta/np.linalg.norm(x_delta)*const.deltas0
+            if SHSrank == SHSroot:
+                print("norm(x_delta) = %s"%np.linalg.norm(x_delta))
+            x_damp = x_0+x_delta
+            x_damp = functions.periodicpoint(x_damp, const)
+            f_next = f(x_damp)
+            if SHSrank == SHSroot:
                 #print("norm(x_delta) = %s"%np.linalg.norm(x_delta))
-                #print("f_next        = %s"%f_next)
+                print("f_next        = %s"%f_next)
             if not optdigTH is False:
                 if optdigTH < f_next:
                     if SHSrank == SHSroot:
@@ -273,7 +356,9 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
                             if SHSrank == SHSroot:
                                 print("ERROR: cannot move: return False")
                             return False
-                        f_next = f(x_0 + x_delta)
+                        x_damp = x_0+x_delta
+                        x_damp = functions.periodicpoint(x_damp, const)
+                        f_next = f(x_damp)
                         if f_next < optdigTH:
                             #x_0 = x_0 + x_delta
                             break
@@ -284,6 +369,8 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
             #else:
                 #x_0 += x_delta 
             g_next = grad(x_0 + x_delta)
+            if g_next is False:
+                return False
             if np.linalg.norm(graddamp) < np.linalg.norm(g_next):
             #if False:
                 if SHSrank == SHSroot:
@@ -301,6 +388,8 @@ def PoppinsDimer(initialpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, con
                             print("ERROR: cannot move: return False")
                         return False
                     g_next = grad(x_0 + x_delta)
+                    if g_next is False:
+                        return False
                     if np.linalg.norm(g_next) < np.linalg.norm(graddamp):
                         x_0 = x_0 + x_delta
                         break
@@ -357,4 +446,92 @@ def calcboundmax(x_0, F_T, f, optdigTH, const, Ddimerdamp):
         if optdigTH < f_x:
             xmax -= xdelta
     return xmax
+def minimize_SD(f, initialpoint, g, stepsize, const):
+    whileN  = 0
+    returnx = copy.copy(initialpoint)
+    while whileN < 1000:
+        _grad = g(returnx)
+        if _grad is False:
+            return False
+        #print("returnx = ",returnx)
+        #print("_grad = ",_grad)
+        #print("norm = ",np.linalg.norm(_grad))
+        #print("A = ",f(returnx))
+        #if np.linalg.norm(_grad) < const.threshold:
+        #if np.linalg.norm(_grad) < 1.0e-3:
+        if np.linalg.norm(_grad) < const.OPTthreshold:
+            return returnx
+        returnx -= _grad * stepsize
+        whileN += 1
+    return False
+
+def minimize_LBFGS(f, initialpoint, g, stepsize, const):
+    bfgsabsMaxTh = 0.2
+    bfgs_memsize = 20
+    bfgsnormMax = 0.5
+    bfgsInitialStepsize = 0.02
+    dim = len(initialpoint)
+    sp   = stepsize
+    s = np.empty((0,dim))
+    y = np.empty((0,dim))
+    xnew = initialpoint
+    xold = None
+    gnew = g(xnew)
+    iterN = 0
+    while iterN < 1000:
+        iterN += 1
+        if xold is not None:
+            si = xnew - xold
+            yi = gnew - gold
+            if len(s) == bfgs_memsize:
+                s = np.roll(s, -1, axis=0)
+                y = np.roll(y, -1, axis=0)
+                s[-1] = si
+                y[-1] = yi
+            else:
+                s = np.append(s, [si], axis=0)
+                y = np.append(y, [yi], axis=0)
+        snum = len(s)
+        #if np.linalg.norm(gnew) < 1.0e-2:
+        if np.linalg.norm(gnew) < const.OPTthreshold:
+            print("norm(gnew) is smaller OPTthreshold: %s"%(const.OPTthreshold))
+            return xnew
+        d    = bfgs_searchdirection(s, y, gnew)
+        xold = copy.copy(xnew)
+        bfgsnorm = np.linalg.norm(sp*d)
+        print("bfgsnorm = %s"%bfgsnorm, flush=True)
+        bfgsabsmax = max([np.abs(x) for x in sp*d])
+        print("bfgsabsmax = %s"%bfgsabsmax, flush=True)
+        if iterN == 1 or snum == 0:
+            xnew = xold + sp * d / bfgsnorm * bfgsInitialStepsize
+        elif bfgsabsmax < bfgsabsMaxTh:
+            xnew = xold + sp * d
+        else:
+            print("apply bfgsabsMaxTh")
+            xnew = xold + sp * d / bfgsabsmax * bfgsabsMaxTh
+            s = np.empty((0,dim))
+            y = np.empty((0,dim))
+            xold = None
+        gold = gnew
+        gnew = g(xnew)
+        print("grad(xnew) = %s"%np.linalg.norm(gnew), flush=True)
+    return False
+def bfgs_searchdirection(s, y, grad):
+    #q = -np.copy(g)
+    q = -np.array(grad, dtype=np.float128)
+    num = len(s)
+    print("Length of LBFGS memory;",num, flush=True)
+    if num==0 : return q
+
+    a = np.zeros(num, dtype=np.float128)
+    for i in np.arange(num)[::-1]:
+        a[i] = np.dot(s[i], q)/np.dot(y[i], s[i])
+        q -= a[i]*y[i]
+
+    q = np.dot(s[-1], y[-1]) / np.dot(y[-1], y[-1]) * q
+
+    for i in range(num) :
+        b = np.dot(y[i], q) / np.dot(y[i], s[i])
+        q += ( a[i] - b ) * s[i]
+    return q
 

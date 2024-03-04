@@ -42,6 +42,8 @@ def main(constC):
 
     if not "threshold" in _keylist:
         constC.threshold = 1.0
+    if not "OPTthreshold" in _keylist:
+        constC.OPTthreshold = 0.1
     if not "minimize_threshold" in _keylist:
         constC.minimize_threshold = 0.01
     if not "moveQ" in _keylist:
@@ -69,6 +71,7 @@ def main(constC):
     constC.IOEl_forADDstart = constC.IOEl * 2
     constC.IOEl_forcollect  = constC.IOEl * 3
 
+
     os.environ["OMP_NUM_THREADS"] = "1"
     if not "wallmax" in _keylist:
         constC.wallmax         = np.array([ 1.0e30 for _ in range(100)])
@@ -84,11 +87,14 @@ def main(constC):
     if not "EQfeMax" in _keylist:
         constC.EQfeMax = 1.0e30
 
+    if not "nADDNormMax" in _keylist:
+        constC.nADDNormMax       = 1.0e30
+
     if not "Ddimer" in _keylist:
-        constC.Ddimer          = 0.05
+        constC.Ddimer          = 0.01
         #constC.Ddimer          = 0.005
     if not "Ddimer_max" in _keylist:
-        constC.Ddimer_max      = 0.10
+        constC.Ddimer_max      = 0.05
     if not "phitol" in _keylist:
         constC.phitol          = 0.08
 
@@ -200,7 +206,63 @@ def main(constC):
     if not "CVfixQ" in _keylist:
         constC.CVfixQ = False
     if not "fixlist" in _keylist:
-        constC.fixlist = False    
+        constC.fixlist = False
+
+    if not "Pbiasconst" in _keylist:
+        constC.Pbiasconst      = 1.0 / np.power(2.0 * np.pi, constC.dim * 0.5)
+    if not "covbinwidthN" in _keylist:
+        constC.covbinwidthN    =  5000
+    if not "nextstepconstQ" in _keylist:
+        constC.nextstepconstQ  = False
+    if not "partOPTQ" in _keylist:
+        constC.partOPTQ = False
+    if not "partdim" in _keylist:
+        constC.partdim = 999999
+    if not "nextKconstQ" in _keylist:
+        constC.nextKconstQ = False
+    if not "nextKconst" in _keylist:
+        constC.nextKconst = 300.0
+    if not "nextK_threshold" in _keylist:
+        constC.nextK_threshold = 0.05
+    if not "Kmin" in _keylist:
+        constC.Kmin = 100.0
+    if not "Kmax" in _keylist:
+        constC.Kmax = 5000.0
+    if not "nextsteproundN" in _keylist:
+        constC.nextsteproundN = 10
+    if not "calltime" in _keylist:
+        constC.calltime = 60*60*60 # max time of sp.call job (second)
+    if not "shellname" in _keylist:
+        constC.shellname = "bash"
+    if not "parallelPy" in _keylist:
+        constC.parallelPy = 1
+    if not "usefcntlQ" in _keylist:
+        constC.usefcntlQ = False
+    if not "UIlistchunksize" in _keylist:
+        constC.UIlistchunksize = 1000
+    if not "grofilename" in _keylist:
+        #constC.grofilename = "npt.gro"
+        constC.grofilename = "run.gro"
+    if not "ADDstepsigmaTH" in _keylist:
+        constC.ADDstepsigmaTH = 1.5
+    if not "minimizeTH" in _keylist:
+        constC.minimizeTH = 0.01
+    if not "nextstepsigmaminTH" in _keylist:
+        constC.nextstepsigmaminTH = 2.5
+    if not "nextstepsigmamaxTH" in _keylist:
+        constC.nextstepsigmamaxTH = 3.0
+    if not "maxtime" in _keylist:
+        constC.mwxtime = "1000" #ps
+    if not "Krandommax" in _keylist:
+        constC.Krandommax = 1000
+    if not "Krandommax" in _keylist:
+        constC.Krandommax = 1000
+    if not "optmethod" in _keylist:
+        constC.optmethod = "L-BFGS"
+
+    if not "findEQsortQ" in _keylist:
+        constC.findEQsortQ = True
+
 
     constC.writestr  = ""
     constC.writestr += "systemname            = %s\n"%constC.systemname
@@ -211,6 +273,7 @@ def main(constC):
     constC.writestr += "threshold             = %s\n"%constC.threshold
     constC.writestr += "moveQ                 = %s\n"%constC.moveQ
     constC.writestr += "threshold             = %s\n"%constC.threshold
+    constC.writestr += "OPTthreshold             = %s\n"%constC.OPTthreshold
     constC.writestr += "neiborfluct_threshold = %s\n"%constC.neiborfluct_threshold
     constC.writestr += "sameEQthreshold       = %s\n"%constC.sameEQthreshold
     constC.writestr += "IOEsphereA_initial    = %s\n"%constC.IOEsphereA_initial

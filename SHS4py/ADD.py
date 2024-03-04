@@ -16,14 +16,14 @@ Available functions:
 
 """
 
-import os, glob, shutil, re, gc
-import time, math, copy, inspect, datetime
+import os, glob
+import time, copy, datetime
 import pickle
 import numpy as np
 from   scipy.optimize import minimize
 from   scipy.optimize import approx_fprime
 
-from . import functions, IOpack
+from . import functions
 
 class ADDthetaClass(object):
     """
@@ -108,11 +108,15 @@ class ADDthetaClass(object):
         """
         #result = f(x, ADDQ = True) - IOEsphereA - A_eq
         #result = f(x, ADDQ = False) - IOEsphereA - A_eq
+        #result = f(x,IOEQ=True) - IOEsphereA - A_eq
+        #result = f(x,IOEQ=True) - IOEsphereA
         result = f(x) - IOEsphereA - A_eq
         ADDhere = result
         #result += self.IOE_total(nADD, ADDths, const)
         #result += self.IOE_total(nADD, ADDths, const)
         resultIOE =  self.IOE_total(nADD, ADDths, ADDhere, const)
+        #print(result)
+        #exit()
         return result + resultIOE
     def IOE_total(self, nADD, ADDths, ADDhere, const):
         """
@@ -172,22 +176,25 @@ class ADDthetaClass(object):
             return neiborADDth.ADD_IOE * cosdamp * cosdamp * cosdamp
         else:
             return 0.0
-    def IOE_grad(self, nADD, r, neiborADDth, const):
+    def IOE_grad(self, nADD, neiborADDth, const):
         if const.cythonQ:
-            return  const.calcgau.IOE_grad(nADD, neiborADDth.nADD, self.SQ_inv, neiborADDth.ADD_IOE, r)
+            return  const.calcgau.IOE_grad(nADD, neiborADDth.nADD, self.SQ_inv, neiborADDth.ADD_IOE)
         #deltaTH = functions.angle_SHS(nADD, neiborADDth.nADD, self.SQ_inv, const)
         q_x     = np.dot(self.SQ_inv, nADD)
         q_y     = np.dot(self.SQ_inv, neiborADDth.nADD)
         deltaTH = functions.angle(q_x, q_y)
         returngrad = np.zeros(len(nADD))
-        eps = 1.0e-5
+        eps = 1.0e-3
         if deltaTH <= np.pi * 0.5:
             cosdamp    = np.cos(deltaTH)
             xydot      = np.dot(q_x, q_y)
             IOE_center = neiborADDth.ADD_IOE * cosdamp * cosdamp * cosdamp
             for i in range(len(nADD)):
-                qx_i     = copy.copy(q_x)
-                qx_i[i] += eps
+                #qx_i     = copy.copy(q_x)
+                #qx_i[i] += eps
+                nADD_eps     = copy.copy(nADD)
+                nADD_eps[i] += eps
+                qx_i     = np.dot(self.SQ_inv, nADD_eps)
                 deltaTH  = functions.angle(qx_i, q_y)
                 cosdamp  = np.cos(deltaTH)
                 IOE_eps  = neiborADDth.ADD_IOE * cosdamp * cosdamp * cosdamp
@@ -205,47 +212,75 @@ class ADDthetaClass(object):
 #        returngradlist  = np.array(returngradlist)
 #        #returngradlist *= 3.0 * neiborADDth.ADD_IOE * cosdamp * cosdamp / r / r / r / r
 #        returngradlist *= neiborADDth.ADD_IOE * cosdamp * cosdamp
-#        #print(returngradlist)
+        #print(returngrad)
         return returngrad
     def IOE_gradgrad(self, nADD, IOEsphereA, r, neiborADDth, thetalistdamp, const):
         returngrad = np.zeros((len(thetalistdamp), len(nADD)))
         return returngrad
-        q_x     = np.dot(self.SQ_inv, nADD)
-        q_y     = np.dot(self.SQ_inv, neiborADDth.nADD)
-        deltaTH = functions.angle(q_x, q_y)
-        eps = 1.0e-5
-        if deltaTH <= np.pi * 0.5:
-            #cosdamp  = cosADD(q_x, q_y)
-            DthetaDq = np.zeros(len(nADD))
-            for i in range(len(nADD)):
-                qx_i          = copy.copy(q_x)
-                qx_i[i]      += eps
-                deltaTH_eps   = functions.angle(qx_i, q_y)
-                DthetaDq[i]   = (deltaTH_eps - deltaTH) / eps
-            DthetaDpsi   = np.zeros(len(thetalistdamp))
-            for k in range(len(thetalistdamp)):
-                thetalist_eps = np.array(thetalistdamp)
-                thetalist_eps[k] += eps
-                nADD_eps      = self.SuperSphere_cartesian(IOEsphereA, thetalist_eps, const)
-                q_x_eps       = np.dot(self.SQ_inv, nADD_eps)
-                deltaTH_eps   = functions.angle(q_x_eps, q_y)
-                DthetaDpsi[k] = (deltaTH_eps - deltaTH) / eps
-            for k in range(len(thetalistdamp)):
-                DthetaDpsiDq = np.zeros(len(nADD))
-                for i in range(len(nADD)):
-                    qx_i            = copy.copy(q_x_eps)
-                    qx_i[i]        += eps
-                    deltaTH_eps     = functions.angle(qx_i, q_y)
-                    DthetaDpsiDq[i] = ((deltaTH_eps - deltaTH) / eps - DthetaDpsi[k]) / eps
-                cosdamp = np.cos(deltaTH)
-                sindamp = np.sin(deltaTH)
-                for i in range(len(nADD)):
-                    returngrad[k][i]  = DthetaDpsiDq[i] * cosdamp * cosdamp * sindamp
-                    returngrad[k][i] += DthetaDpsi[k] * DthetaDq[i] * \
-                        (2.0 * cosdamp * sindamp * sindamp - cosdamp * cosdamp * cosdamp)
-        returngrad *= 3.0 * neiborADDth.ADD_IOE
-        return returngrad
+#        q_x     = np.dot(self.SQ_inv, nADD)
+#        q_y     = np.dot(self.SQ_inv, neiborADDth.nADD)
+#        deltaTH = functions.angle(q_x, q_y)
+#        eps = 1.0e-5
+#        if deltaTH <= np.pi * 0.5:
+#            #cosdamp  = cosADD(q_x, q_y)
+#            DthetaDq = np.zeros(len(nADD))
+#            for i in range(len(nADD)):
+#                qx_i          = copy.copy(q_x)
+#                qx_i[i]      += eps
+#                deltaTH_eps   = functions.angle(qx_i, q_y)
+#                DthetaDq[i]   = (deltaTH_eps - deltaTH) / eps
+#            DthetaDpsi   = np.zeros(len(thetalistdamp))
+#            for k in range(len(thetalistdamp)):
+#                thetalist_eps = np.array(thetalistdamp)
+#                thetalist_eps[k] += eps
+#                nADD_eps      = self.SuperSphere_cartesian(IOEsphereA, thetalist_eps, const)
+#                q_x_eps       = np.dot(self.SQ_inv, nADD_eps)
+#                deltaTH_eps   = functions.angle(q_x_eps, q_y)
+#                DthetaDpsi[k] = (deltaTH_eps - deltaTH) / eps
+#            for k in range(len(thetalistdamp)):
+#                DthetaDpsiDq = np.zeros(len(nADD))
+#                for i in range(len(nADD)):
+#                    qx_i            = copy.copy(q_x_eps)
+#                    qx_i[i]        += eps
+#                    deltaTH_eps     = functions.angle(qx_i, q_y)
+#                    DthetaDpsiDq[i] = ((deltaTH_eps - deltaTH) / eps - DthetaDpsi[k]) / eps
+#                cosdamp = np.cos(deltaTH)
+#                sindamp = np.sin(deltaTH)
+#                for i in range(len(nADD)):
+#                    returngrad[k][i]  = DthetaDpsiDq[i] * cosdamp * cosdamp * sindamp
+#                    returngrad[k][i] += DthetaDpsi[k] * DthetaDq[i] * \
+#                        (2.0 * cosdamp * sindamp * sindamp - cosdamp * cosdamp * cosdamp)
+#        returngrad *= 3.0 * neiborADDth.ADD_IOE
+#        return returngrad
 
+    def grad_hypersphere(self, f, grad, eqpoint, IOEsphereA, thetalist, ADDths, const):
+        """
+        the gradient along theta 
+        cf: thetalist = {theta_n0,..., theta_1}
+        return: gradient of the tangent space on hypersphere
+        """
+        #thetalist   = self.thetalist + deltaTH 
+        nADD        = self.SuperSphere_cartesian(IOEsphereA, thetalist, const)
+        EnADD = nADD/np.linalg.norm(nADD)
+        #thetalist   = functions.calctheta(nADD, eigVlist, eigNlist)
+        tergetpoint = eqpoint + nADD
+        if const.periodicQ:
+            tergetpoint = functions.periodicpoint(tergetpoint, const)
+        grad_x = grad(tergetpoint)
+        if grad_x is False:
+            return False,False
+        returngrad = grad_x - np.dot(grad_x,EnADD)*EnADD
+        #returngrad = grad_x 
+        for neiborADDth in ADDths:
+            if self.IDnum == neiborADDth.IDnum:
+                continue
+            if neiborADDth.ADDoptQ:
+                continue
+            if neiborADDth.ADD <= self.ADD:
+            #if True:
+                returngrad -= self.IOE_grad(nADD, neiborADDth, const)
+        #returngrad = returngrad - np.dot(returngrad,EnADD)*EnADD
+        return tergetpoint, returngrad
     def grad_theta(self, f, grad, eqpoint, IOEsphereA, deltaTH, A_eq, ADDths, const, eigVlist, eigNlist):
         """
         the gradient along theta (this function is not work now.)
@@ -286,16 +321,17 @@ class ADDthetaClass(object):
                 Dqlist[i] *= 0.0
         Dqlist[-1] *= a_k
         return Dqlist
-    def delf_delx(self, grad_q, ADDths, nADD, r, const):
+    def delf_delx(self, grad_x, ADDths, nADD, r, const):
         returngrad = np.zeros(len(nADD))
         for neiborADDth in ADDths:
             if self.IDnum == neiborADDth.IDnum:
                 continue
             if neiborADDth.ADDoptQ:
                 continue
-            if neiborADDth.ADD <= self.ADD:
-                returngrad -= self.IOE_grad(nADD, r, neiborADDth, const)
-        returngrad += grad_q
+            #if neiborADDth.ADD <= self.ADD:
+            if True:
+                returngrad += self.IOE_grad(nADD, r, neiborADDth, const)
+        returngrad += grad_x
         return returngrad
     def hessian_theta(self, f, grad, eqpoint, IOEsphereA, A_eq, ADDths, const, eigVlist, eigNlist):
 
@@ -304,6 +340,8 @@ class ADDthetaClass(object):
         gradtheta  =  self.grad_theta(f, grad, eqpoint,
                                 IOEsphereA, deltaTH, A_eq, ADDths, const,
                                 eigVlist ,eigNlist)
+        if gradtheta is False:
+            return False
         eps = 1.0e-5
         for theta_i in range(len(self.thetalist)): # the number of derivative
             deltaTH = np.zeros(len(self.thetalist))
@@ -311,6 +349,8 @@ class ADDthetaClass(object):
             gradtheta_eps = self.grad_theta(f, grad, eqpoint,
                                 IOEsphereA, deltaTH, A_eq, ADDths, const,
                                 eigVlist ,eigNlist)
+            if gradtheta_eps is False:
+                return False
             gradgrad = (gradtheta_eps - gradtheta) / eps
             #print("gradgrad = %s"%gradgrad)
             for theta_j in range(len(self.thetalist)): # the number of derivative
@@ -476,7 +516,8 @@ def main(eqpoint, f, grad, hessian, dirname, optdigTH, SHSrank, SHSroot, SHScomm
     if start0sphereQ:
         ADDths = []
         if const.lADDnQ:
-            eigVnum = const.IOEl_forcollect
+            #eigVnum = const.IOEl_forcollect
+            eigVnum = (const.IOEl_forcollect+2-1)//2
         else:
             eigVnum = len(eigVlist)
         while True:
@@ -496,6 +537,8 @@ def main(eqpoint, f, grad, hessian, dirname, optdigTH, SHSrank, SHSroot, SHScomm
                     #ADDth.ADD_IOE      = ADDth.A - IOEsphereA - A_eq
                     ADDth.ADD_IOE      = -1.0e30
                     ADDth.grad     = grad(ADDth.x)
+                    if ADDth.grad is False:
+                            continue
                     ADDth.grad_vec = np.dot(ADDth.grad, ADDth.nADD/np.linalg.norm(ADDth.nADD))
                     ADDth.findTSQ = False
                     ADDths.append(ADDth)
@@ -514,6 +557,19 @@ def main(eqpoint, f, grad, hessian, dirname, optdigTH, SHSrank, SHSroot, SHScomm
             if SHSrank == SHSroot:
                 with open("./sphere.txt", "a")  as wf:
                     wf.write(" ====> len(ADDths) = %s\n"%len(ADDths))
+            if len(ADDths) == 0:
+                IOEmin = 0.0
+            else:
+                IOEmin = min([ADDth.ADD_IOE for ADDth in ADDths])
+            if const.IOEthreshold < IOEmin:
+                IOEsphereA = np.sqrt(IOEsphereA) + IOEsphereA_r
+                IOEsphereA = IOEsphereA * IOEsphereA
+                optturnN   = 0
+                print("IOEmin = %s is larger than const.IOEthreshold = %s"%(IOEmin,const.IOEthreshold),         flush = True)
+                print("IOEsphereA is changed as %s"%IOEsphereA, flush = True)
+                with open("./sphere.txt", "a")  as wf:
+                    wf.write("IOEsphereA is changed to %s\n"%IOEsphereA)
+                continue
             if len(ADDths) <= lenADDthsbefore:
                 break
             if const.lADDnQ:
@@ -563,14 +619,21 @@ def main(eqpoint, f, grad, hessian, dirname, optdigTH, SHSrank, SHSroot, SHScomm
         writeline = "%05d: "%sphereN
         for ADDth in ADDths:
             ADDth.grad     = grad(ADDth.x)
+            if ADDth.grad is False:
+                ADDth.ADDremoveQ = True
+                continue
             ADDth.grad_vec = np.dot(ADDth.grad, ADDth.nADD/np.linalg.norm(ADDth.nADD))
             ADDth.grad_norm = np.linalg.norm(ADDth.grad)
             if ADDth.findTSQ:
                 writeline += " % 5.2f,"%0.0
             else:
                 writeline += " % 5.2f,"%ADDth.grad_norm
-                #if sphereN > 5 and ADDth.grad_vec < 0.0:
-                if ADDth.grad_norm < const.threshold:
+                if const.nADDNormMax < np.linalg.norm(ADDth.nADD):
+                    if SHSrank == SHSroot:
+                        print("norm of nADD is over nADDNormMax(%s)"%const.nADDNormMax, flush = True)
+                    ADDth.findTSQ = True
+                if sphereN > 5 and ADDth.grad_vec < 0.0:
+                #if ADDth.grad_norm < const.threshold:
                     if SHSrank == SHSroot:
                         print("New TS point is found.", flush = True)
                     ADDth.findTSQ = True
@@ -709,84 +772,80 @@ def Opt_hyper_sphere(ADDths, f, grad, eqpoint, eigNlist, eigVlist, IOEsphereA, I
                         #wf.write("%s is skipped\n"%ADDth.IDnum)
                 ADDth.ADDoptQ = False
                 continue
-            if const.x0randomQ:
+            #if const.x0randomQ:
+            if False:
                 if SHSrank == SHSroot:
                     x_initial = np.array([np.random.rand() * 0.01 - 0.005 for _ in range(len(ADDth.thetalist))])
+                    x_initial = x_initial/np.linalg.norm(x_initial)*0.01
                 else:
                     x_initial = None
                 if const.calc_mpiQ:
                     x_initial = const.SHScomm.bcast(x_initial, root=0)
-
             else:
-                x_initial = np.zeros(len(ADDth.thetalist)),
+                x_initial = np.zeros(len(ADDth.thetalist))
             if ADDth.ADDoptQ:
                 time2 = time.time()
-                if const.use_jacQ:
-                    #boundlist = []
-                    #for _ in range(len(ADDth.thetalist) - 1):
-                        #boundlist.append([-np.pi * 0.5, np.pi * 0.5])
-                    #boundlist.append([-np.pi, np.pi])
-                    result = minimize(
-                            lambda deltaTH: ADDth.calc_onHS(deltaTH, f,
-                                    eqpoint, IOEsphereA, A_eq, ADDths, const,
-                                    ),
-                            #x0 = np.zeros(len(ADDth.thetalist)),
-                            x0 = x_initial,
-                            jac = lambda deltaTH: ADDth.grad_theta(f, grad, eqpoint,
-                                IOEsphereA, deltaTH, A_eq, ADDths, const,
-                                eigVlist ,eigNlist),
-                            #bounds = boundlist,
-                            #tol = const.minimize_threshold,
-                            #options = {"gtol":const.minimize_threshold},
-                            method="L-BFGS-B")
-                            #method="tnc")
-                    resultx = result.x
-
-                    #eps = np.sqrt(np.finfo(float).eps)
-                    #grad_app = approx_fprime(np.zeros(len(ADDth.thetalist)), 
-                    #grad_app = approx_fprime(result.x, 
-                        #lambda deltaTH: ADDth.calc_onHS(deltaTH, f,
-                                #eqpoint, IOEsphereA, A_eq, ADDths, const
-                                #), [eps for _ in range(len(ADDth.thetalist))])
-                    #grad_jac = ADDth.grad_theta(f, grad, eqpoint,
-                            ##IOEsphereA, result.x, A_eq, ADDths, const)
-                            #IOEsphereA, np.zeros(len(ADDth.thetalist)), A_eq, ADDths, 
-                            #const, eigVlist, eigNlist)
-#                    if SHSrank == SHSroot:
-#                        #print("ADDth.x = %s"%ADDth.x)
-#                        for i in range(len(result.x)):
-#                            print("thetalist[%s] = % 5.4f"%(i, ADDth.thetalist[i]))
-#                        #for i in range(len(result.x)):
-#                            #print("result.x[%s] = % 5.4f"%(i, result.x[i]))
-#                        #print("grad_app = %s"%grad_app)
-#                        #print("grad_jac = %s"%grad_jac)
-#                        for i in range(len(grad_app)):
-#                            print("% 5.4f, % 5.4f"%(grad_app[i], grad_jac[i]))
-#                        print("grad_app, grad_jac = (% 5.4f, % 5.4f)"%(np.linalg.norm(grad_app), np.linalg.norm(grad_jac)), flush = True)
-##                    exit()
-
+                if sphereN % 5 == 0:
+                    x0ramdomQ = True
                 else:
-                    result= minimize(
-                        lambda deltaTH: ADDth.calc_onHS(deltaTH, f, 
-                                eqpoint, IOEsphereA, A_eq, ADDths, const
-                                ),
-                        #x0 = np.zeros(len(ADDth.thetalist)),
-                        x0 = x_initial,
-                        #tol = const.minimize_threshold,
-                        #options = {"gtol":const.minimize_threshold},
-                        method="L-BFGS-B")
-                    resultx = result.x
+                    x0ramdomQ = False
+                #if const.optmethod == "SD":
+                #if False:
+                if True:
 
-                time3 = time.time()
-                ADDth.thetalist = ADDth.thetalist + resultx
-                #ADDth.thetalist = ADDth.thetalist + result.x
-                #ADDth.thetalist = ADDth.thetalist + result_jac.x
-                ADDth.nADD      = ADDth.SuperSphere_cartesian(IOEsphereA, ADDth.thetalist, const)
-                ADDth.thetalist = functions.calctheta(ADDth.nADD, eigVlist, eigNlist)
-                ADDth.x         = eqpoint + ADDth.nADD
-                ADDth.x         = functions.periodicpoint(ADDth.x, const)
-                ADDth.A         = f(ADDth.x)
-                ADDth.ADD       = ADDth.A - IOEsphereA - A_eq
+                   #thetalist = minimizeTh_SD(ADDth,x_initial,
+                   thetalist = minimizeTh_SD_SS(ADDth,x_initial,
+                                f, grad, eqpoint, IOEsphereA, ADDths, const,
+                                eigVlist ,eigNlist, x0ramdomQ)
+#                elif const.optmethod == "L-BFGS":
+#                #elif False:
+#                   resultx = minimizeTh_LBFGS(ADDth,x_initial,
+#                                f, grad, eqpoint,
+#                                IOEsphereA, A_eq, ADDths, const,
+#                                eigVlist ,eigNlist)
+#                elif const.use_jacQ:
+#                    result = minimize(
+#                            lambda deltaTH: ADDth.calc_onHS(deltaTH, f,
+#                                    eqpoint, IOEsphereA, A_eq, ADDths, const,
+#                                    ),
+#                            #x0 = np.zeros(len(ADDth.thetalist)),
+#                            x0 = x_initial,
+#                            jac = lambda deltaTH: ADDth.grad_theta(f, grad, eqpoint,
+#                                IOEsphereA, deltaTH, A_eq, ADDths, const,
+#                                eigVlist ,eigNlist),
+#                            #bounds = boundlist,
+#                            tol = const.minimize_threshold,
+#                            #options = {"gtol":const.minimize_threshold},
+#                            method="L-BFGS-B")
+#                            #method="tnc")
+#                    resultx = result.x
+#                else:
+#                    result= minimize(
+#                        lambda deltaTH: ADDth.calc_onHS(deltaTH, f, 
+#                                eqpoint, IOEsphereA, A_eq, ADDths, const
+#                                ),
+#                        #x0 = np.zeros(len(ADDth.thetalist)),
+#                        x0 = x_initial,
+#                        #tol = const.minimize_threshold,
+#                        #options = {"gtol":const.minimize_threshold},
+#                        method="L-BFGS-B")
+#                    resultx = result.x
+                if thetalist is False:
+                    ADDth.ADDremoveQ = True
+                    spherestr += "%s is removed for optimisation\n"%ADDth.IDnum
+                    continue
+                else:
+                    time3 = time.time()
+                    ADDth.thetalist =thetalist
+                    #ADDth.thetalist = ADDth.thetalist + resultx
+                    #ADDth.thetalist = ADDth.thetalist + result.x
+                    #ADDth.thetalist = ADDth.thetalist + result_jac.x
+                    ADDth.nADD      = ADDth.SuperSphere_cartesian(IOEsphereA, ADDth.thetalist, const)
+                    #ADDth.thetalist = functions.calctheta(ADDth.nADD, eigVlist, eigNlist)
+                    ADDth.x         = eqpoint + ADDth.nADD
+                    ADDth.x         = functions.periodicpoint(ADDth.x, const)
+                    ADDth.A         = f(ADDth.x)
+                    ADDth.ADD       = ADDth.A - IOEsphereA - A_eq
                 #print(ADDth.ADD)
                 if ADDth.ADD != ADDth.ADD:
                     if SHSrank == SHSroot:
@@ -796,39 +855,13 @@ def Opt_hyper_sphere(ADDths, f, grad, eqpoint, eigNlist, eigVlist, IOEsphereA, I
                     functions.TARGZandexit()
                 #ADDth.ADD_IOE   = f_IOE(ADDth.nADD, ADDth.x, f, IOEsphereA, A_eq, ADDth, ADDths, eigNlist, eigVlist, const)
                 ADDth.ADD_IOE   = ADDth.f_IOE(ADDth.nADD, ADDth.x, f, IOEsphereA, A_eq, ADDths, const)
-#                if ADDth.ADD != ADDth.ADD_IOE:
-#                    result = minimize(
-#                        lambda deltaTH: calc_onHS(ADDth.thetalist + deltaTH, f, f_IOE, eqpoint, eigNlist, eigVlist, IOEsphereA, A_eq, ADDth, ADDths), 
-#                        x0 = np.zeros(len(ADDth.thetalist)),
-#                        method="L-BFGS-B")
-#                    ADDth.thetalist = ADDth.thetalist + result.x
-#                    ADDth.x         = eqpoint + ADDth.nADD
-#                    ADDth.x         = functions.periodicpoint(ADDth.x)
-#                    ADDth.A         = f(ADDth.x)
-#                    ADDth.ADD       = ADDth.A - IOEsphereA - A_eq
-#                    ADDth.ADD_IOE   = f_IOE(ADDth.nADD, ADDth.x, f, IOEsphereA, A_eq, ADDth, ADDths, eigNlist, eigVlist)
-#                else:
-#                    if SHSrank == SHSroot:
-#                        with open("./sphere%05d.txt"%sphereN, "a")  as wf:
-#                            wf.write("jac\n")
-
-#                eps = np.sqrt(np.finfo(float).eps)
-#                grad_app = approx_fprime(np.zeros(len(ADDth.thetalist)), 
-#                        lambda deltaTH: ADDth.calc_onHS(deltaTH, f,
-#                                eqpoint, IOEsphereA, A_eq, ADDths, const
-#                                ), [eps for _ in range(len(ADDth.thetalist))])
-#                grad_jac = ADDth.grad_theta(f, grad, eqpoint,
-#                            IOEsphereA, np.zeros(len(ADDth.thetalist)), A_eq, ADDths, const)
-#                if SHSrank == SHSroot:
-#                    print("ADDth.x = %s"%ADDth.x)
-#                    print("grad_app, grad_jac = (% 5.4f, % 5.4f)"%(grad_app, grad_jac), flush = True)
-#                    exit()
                 ADDth.ADDoptQ = False
                 if SHSrank == SHSroot:
                     #with open("./sphere.txt", "a")  as wf:
                         #wf.write("(IDnum, ADD, ADD_IOE), time = (%s, % 5.3f, % 5.3f), % 5.3f\n"%(
                                 #ADDth.IDnum, ADDth.ADD, ADDth.ADD_IOE, time3 - time2))
                     #print("IOE = % 5.4f"%(ADDth.ADD_IOE - ADDth.ADD), flush = True)
+                    #print("ADD_IOE =",ADDth.ADD_IOE)
                     spherestr += "(IDnum, ADD, ADD_IOE), time = (%s, % 5.3f, % 5.3f), % 5.3f\n"%(
                                 ADDth.IDnum, ADDth.ADD, ADDth.ADD_IOE, time3 - time2)
                 returnoptQ = False
@@ -843,7 +876,7 @@ def Opt_hyper_sphere(ADDths, f, grad, eqpoint, eigNlist, eigVlist, IOEsphereA, I
                         calcbifQ = True
                     elif const.chkinitialTSQ  and sphereN == 0:
                         calcbifQ = True
-                if calcbifQ:
+                if calcbifQ and ADDth.ADDremoveQ is False:
                     bifQ, returnoptQ, _ADDoptQ, _ADDremoveQ, bifADDths = chkBifurcation(
                             f, grad, eqpoint, IOEsphereA, A_eq, ADDth, ADDths, const, 
                             sphereN, eigVlist, eigNlist, dim, SHSrank, SHSroot)
@@ -899,6 +932,7 @@ def Opt_hyper_sphere(ADDths, f, grad, eqpoint, eigNlist, eigVlist, IOEsphereA, I
                 else:
                     newADDths.append(ADDth)
         opt_calcQlist = [ADDth.ADDoptQ for ADDth in ADDths]
+        
         #if sphereN == 0:
         #if True:
         if bifQ is False:
@@ -917,10 +951,11 @@ def Opt_hyper_sphere(ADDths, f, grad, eqpoint, eigNlist, eigVlist, IOEsphereA, I
                         spherestr += "IOEsphereA is changed as %s\n"%IOEsphereA
                     nonoptlist = []
                     for ADDth in ADDths:
-                        ADDth.thetalist  = functions.calctheta(ADDth.nADD, eigVlist, eigNlist)
+                        #ADDth.thetalist  = functions.calctheta(ADDth.nADD, eigVlist, eigNlist)
                         ADDth.ADDoptQ    = True
                         ADDth.ADDremoveQ = False
                     break
+        
     ADDths = copy.copy(newADDths)
     if const.exportADDpointsQ:
         if SHSrank == SHSroot:
@@ -929,6 +964,12 @@ def Opt_hyper_sphere(ADDths, f, grad, eqpoint, eigNlist, eigVlist, IOEsphereA, I
                 writeline += ",".join(["% 5.3f"%p for p in eqpoint + ADDth.nADD])
                 writeline += "\n"
             with open("./ADDpoints.csv", "a")  as wf:
+                    wf.write(writeline)
+            writeline = ""
+            for ADDth in ADDths:
+                writeline += ",".join(["% 5.3f"%p for p in eqpoint + ADDth.nADDinit])
+                writeline += "\n"
+            with open("./ADDpoints_init.csv", "a")  as wf:
                     wf.write(writeline)
     if SHSrank == SHSroot:
         if spherestr is not False:
@@ -1082,6 +1123,9 @@ def chkBifurcation(f, grad, eqpoint, IOEsphereA, A_eq, ADDth, ADDths, const,
     jac = bifADDth.grad_theta(f, grad, eqpoint,
             IOEsphereA, deltaTH, A_eq, ADDths, const,
             eigVlist ,eigNlist)
+    if jac is False:
+        _ADDremoveQ = True
+        return bifQ, returnoptQ, _ADDoptQ, _ADDremoveQ, bifADDths
     Ejac = jac / np.linalg.norm(jac)
     whileN = 0
     while whileN < 100:
@@ -1128,6 +1172,9 @@ def chkBifurcation(f, grad, eqpoint, IOEsphereA, A_eq, ADDth, ADDths, const,
     jac = bifADDth2.grad_theta(f, grad, eqpoint,
             IOEsphereA, deltaTH, A_eq, ADDths, const,
             eigVlist ,eigNlist)
+    if jac is False:
+        _ADDremoveQ = True
+        return bifQ, returnoptQ, _ADDoptQ, _ADDremoveQ, bifADDths
     Ejac = jac / np.linalg.norm(jac)
     whileN = 0
     while whileN < 100:
@@ -1138,6 +1185,9 @@ def chkBifurcation(f, grad, eqpoint, IOEsphereA, A_eq, ADDth, ADDths, const,
         newjac = bifADDth2.grad_theta(f, grad, eqpoint,
             IOEsphereA, deltaTH, A_eq, ADDths, const,
             eigVlist ,eigNlist)
+        if newjac is False:
+            _ADDremoveQ = True
+            return bifQ, returnoptQ, _ADDoptQ, _ADDremoveQ, bifADDths
         Enewjac = newjac / np.linalg.norm(newjac)
         #if SHSrank == SHSroot:
             #print("%s, % 3.2f"%(whileN, np.linalg.norm(newjac)), flush = True)
@@ -1196,4 +1246,145 @@ def chkBifurcation(f, grad, eqpoint, IOEsphereA, A_eq, ADDth, ADDths, const,
             _ADDoptQ = False
             _ADDremoveQ = False
     return bifQ, returnoptQ, _ADDoptQ, _ADDremoveQ, bifADDths
+def minimizeTh_SD(ADDth, initialpoint,
+                    f, grad, eqpoint,
+                    IOEsphereA, ADDths, const,
+                    eigVlist ,eigNlist):
+    whileN  = 0
+    thetalist = ADDth.thetalist + initialpoint
+    stepsize = 0.001
+    #stepsize = 0.1/IOEsphereA
+    #trustradius = 0.01/IOEsphereA
+    #trustradius = 0.1
+    while whileN < 10000:
+        _point, _grad = ADDth.grad_hypersphere(f, grad, eqpoint,
+                                IOEsphereA, thetalist, ADDths, const)
+        if _grad is False:
+            return False
+        if np.linalg.norm(_grad) < 1.0e-2:
+            #print("end in %s: %s"%(whileN,_grad))
+            #print("thetalist = ",thetalist)
+            #print("point  = ",_point)
+            return thetalist
+        _point_initial = _point
+        cartesianNorm = np.linalg.norm(_grad * stepsize)
+        while True:
+            _point -= _grad * stepsize
+            _point = functions.periodicpoint(_point, const, eqpoint)
+            nADD = _point - eqpoint
+            thetalist   = functions.calctheta(nADD, eigVlist, eigNlist)
+            nADD        = ADDth.SuperSphere_cartesian(IOEsphereA, thetalist, const)
+            newpoint = eqpoint+nADD
+            if const.periodicQ:
+                newpoint = functions.periodicpoint(newpoint, const)
+                newpoint = functions.periodicpoint(newpoint, const,_point_initial)
+            delta = np.linalg.norm(_point_initial - newpoint)
+            if cartesianNorm < delta:
+                #print("delta=",delta)
+                break
+        whileN += 1
+        if whileN%100 == 0:
+            #print("%s: %s"%(whileN,_grad))
+            print("%s: %s"%(whileN,np.linalg.norm(_grad)))
+            print("thetalist = ",thetalist)
+            print("point  = ",_point)
+    
+    print("%s: %s: turn is over;False"%(whileN,_grad))
+    return False
+
+def minimizeTh_SD_SS(ADDth, initialpoint,
+                    f, grad, eqpoint,
+                    IOEsphereA, ADDths, const,
+                    eigVlist ,eigNlist, x0randomQ):
+    whileN  = 0
+    thetalist = ADDth.thetalist + initialpoint
+    stepsize = 0.001
+    nADD        = ADDth.SuperSphere_cartesian(IOEsphereA, thetalist, const)
+    if x0randomQ:
+        nADDinit = copy.copy(nADD)
+        while True:
+            while True:
+                deltax = np.array([np.random.rand() - 0.5 for _ in range(len(nADD))])
+                if 0.1 <= np.linalg.norm(deltax) <= 1.0:
+                    break
+            deltax = deltax/np.linalg.norm(deltax)*0.1
+            nADD = nADDinit + deltax
+            thetalist   = functions.calctheta(nADD, eigVlist, eigNlist)
+            nADD        = ADDth.SuperSphere_cartesian(IOEsphereA, thetalist, const)
+            #if np.linalg.norm(nADD -nADDinit) < 0.02:
+            deltass = nADD - nADDinit
+            if 0.01 < max(np.abs(x) for x in deltass) < 0.05:
+                break
+    ADDth.nADDinit = nADD
+    tergetpoint = eqpoint + nADD
+    if const.periodicQ:
+        tergetpoint = functions.periodicpoint(tergetpoint, const)
+    while whileN < 100000:
+        #with open("./chktarget.csv","a") as wf:
+            #wf.write("%s, %s\n"%(tergetpoint[0],tergetpoint[1]))
+        grad_x = grad(tergetpoint)
+        for neiborADDth in ADDths:
+            if ADDth.IDnum == neiborADDth.IDnum:
+                continue
+            if neiborADDth.ADDoptQ:
+                continue
+            if neiborADDth.ADD <= ADDth.ADD:
+                grad_x -= ADDth.IOE_grad(nADD, neiborADDth, const)
+        grad_q = np.dot(ADDth.SQ, grad_x)
+        nADD_q = np.dot(ADDth.SQ, nADD)
+        EnADD_q = nADD_q/np.linalg.norm(nADD_q)
+        SSgrad_q = grad_q - np.dot(grad_q,EnADD_q)*EnADD_q
+        SSgrad = np.dot(ADDth.SQ_inv, SSgrad_q)
+        #if np.linalg.norm(SSgrad) < 1.0e-2:
+        #if np.linalg.norm(SSgrad) < 0.1:
+        if np.linalg.norm(SSgrad) < 1.0:
+            #print("%s: %s"%(whileN,np.linalg.norm(SSgrad)))
+            #print("return")
+            return thetalist
+        #_point= copy.copy(tergetpoint)
+        #_point_initial = copy.copy(tergetpoint)
+        _point_initial = eqpoint + nADD
+        #print("SSgrad = ",SSgrad)
+        #cartesianNorm = np.linalg.norm(SSgrad * stepsize)
+        whileN2 = 0
+        stepsizedamp = stepsize
+        while True:
+            whileN2 += 1
+            #print(stepsizedamp)
+            if whileN2 > 100:
+                print("ERROR in 1354@ADD")
+                exit()
+                #break
+            #if max([np.abs(x) for x in SSgrad]) < stepsizedamp:
+            if False:
+                tergetpoint = _point_initial - SSgrad
+            else:
+                tergetpoint = _point_initial - whileN2*SSgrad /np.linalg.norm(SSgrad)* stepsizedamp
+            nADD2 = tergetpoint - eqpoint
+            thetalist   = functions.calctheta(nADD2, eigVlist, eigNlist)
+            nADD2        = ADDth.SuperSphere_cartesian(IOEsphereA, thetalist, const)
+            tergetpoint = eqpoint+nADD2
+            #if const.periodicQ:
+                #tergetpointdamp = functions.periodicpoint(tergetpoint, const,_point_initial)
+            #else:
+                #tergetpointdamp = tergetpoint
+            #delta = np.linalg.norm(_point_initial - tergetpointdamp)
+            delta = np.linalg.norm(nADD - nADD2)
+            #print(delta, flush=True)
+            if delta < 0.01:
+                continue
+            else:
+                break
+        nADD = nADD2
+        whileN += 1
+        #if whileN%1000 == 0:
+        if whileN>1000:
+            #print("%s: %s"%(whileN,_grad))
+            print("%s: %s"%(whileN,np.linalg.norm(SSgrad)))
+            print("thetalist = ",thetalist)
+            print("point  = ",tergetpoint)
+            print("SSgrad  = ",SSgrad)
+            print("nADD  = ",nADD)
+            print("nADD2  = ",nADD2)
+    return False
 

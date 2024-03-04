@@ -54,8 +54,8 @@ def main(const):
             k    = int(line[0])
             l    = int(line[1])
             K_kl = float(line[2])
-            #if const.k_min < K_kl:
-            if True:
+            if const.k_min < K_kl:
+            #if True:
                 Kmat[k,l] = K_kl * const.t_delta
                 #Kmat[k,l] = K_kl #* const.t_delta
     else:
@@ -112,7 +112,7 @@ def main(const):
             if const.is_bilayer:
                 Z_dic[eqpointname] = eqpoint[-1]
             i += 1
-    
+
     #stateQ = lil_matrix((dim, 1), dtype=float)
     stateQ = np.zeros(dim, dtype=float)
     sN_outsideP = - 1.0e30
@@ -125,16 +125,22 @@ def main(const):
         sN = stateN[i]
         if sN == 0:
             continue
-        #if 25.0 < z:
-        if 0.0 < z:
-            #outsidePlist.append(i)
+        #if 25.0 == z:
+        #if 30.0 == z:
+        if 24.5 < z:
+        #if 0.0 < z:
+        #if 30.0 < z:
+            outsidePlist.append(i)
             print("plus;%s, %s"%(z,SSname))
-            if sN_outsideP < sN:
-                sN_outsideP = sN
-                outsideP = SSname
-                outsideP_i = i
-                outsidePlist = [i]
-        elif z < - 25.0:
+            #if sN_outsideP < sN:
+                #sN_outsideP = sN
+                #outsideP = SSname
+                #outsideP_i = i
+                #outsidePlist = [i]
+        elif z < - 24.5:
+        #elif z < - 30.0:
+        #elif z < -10.0:
+        #elif z < 0.0:
             outsideMlist.append(i)
             print("minus;%s, %s"%(z,SSname))
             #if sN_outsideM < sN:
@@ -142,21 +148,35 @@ def main(const):
                 #outsideM = SSname
                 #outsideM_i = i
                 #outsideMlist = [i]
-    kSimdic = "kSim_%s"%const.k_RCMC
-    if not os.path.exists(kSimdic):
-        os.mkdir(kSimdic)
-    os.chdir(kSimdic)
+
     #stateQ[outsideP_i] = 1.0
-    totalP = 0.0
-    for outsideP_i in outsidePlist:
-        stateQ[outsideP_i] = np.exp(-const.beta * FE_dic[SSlist[outsideP_i]])
-        totalP += stateQ[outsideP_i]
-    for outsideP_i in outsidePlist:
-        stateQ[outsideP_i] /= totalP
+
+    #totalP = 0.0
+    #for outsideP_i in outsidePlist:
+        #stateQ[outsideP_i] = np.exp(-const.beta * FE_dic[SSlist[outsideP_i]])
+        #totalP += stateQ[outsideP_i]
+    #for outsideP_i in outsidePlist:
+        #stateQ[outsideP_i] /= totalP
+
+    for line in open("./RCMCresult/stateQ/00000.csv"):
+        line = line.split(",")
+        n_stateQ = int(line[0])
+        if n_stateQ != n:
+            continue
+        for i in range(1,len(line),2):
+            stateindex = int(line[i])
+            stateQdamp = float(line[i+1])
+            #print("%s -> % 10.9f"%(stateindex, stateQdamp))
+            stateQ[stateindex] += stateQdamp
 
     for outsideM_i in outsideMlist:
         for i in range(dim):
             Kmat[outsideM_i, i] = 0.0
+
+    kSimdic = "kSim_%s"%const.k_RCMC
+    if not os.path.exists(kSimdic):
+        os.mkdir(kSimdic)
+    os.chdir(kSimdic)
 
     Kmat_coo = Kmat.tocoo()
     #diaglist = []
@@ -182,11 +202,13 @@ def main(const):
     #writeline += "outsideP_i , %s\n"%outsideP_i
     #writeline += "Z_p        , %s\n"%Z_dic[outsideP]
     #writeline += "sN_outsideP, %s\n"%sN_outsideP
+    writeline += "outsidePlist = %s\n"%outsidePlist
     writeline += "len(outsidePlist) = %s\n"%len(outsidePlist)
     #writeline += "outsideM   , %s\n"%outsideM 
     #writeline += "outsideM_i , %s\n"%outsideM_i
     #writeline += "Z_m        , %s\n"%Z_dic[outsideM]
     #writeline += "sN_outsideM, %s\n"%sN_outsideM
+    writeline += "outsideMlist = %s\n"%outsideMlist
     writeline += "len(outsideMlist) = %s\n"%len(outsideMlist)
     with open("./info.csv", "w") as wf:
         wf.write(writeline)
@@ -196,36 +218,40 @@ def main(const):
     Kmat = Kmat.transpose()
     #expectation_k = 0.0
     expectation_tau = 0.0
+    exportQdelta = 1.0/100.0
+    exportQ = 0.0
+    exportQ += exportQdelta
+    totalP_minus = 0.0
+    Kmat = csr_matrix(Kmat)
     while True:
         stepN += 1
         t = stepN * const.t_delta
-        if 1.0/const.k_min < t:
-            break
-        Qdelta = Kmat.dot(stateQ)
-        totalP_minus = 0.0
-        deltaP_minus = 0.0
-        for outsideM_i in outsideMlist:
-            totalP_minus += stateQ[outsideM_i]
-            deltaP_minus += Qdelta[outsideM_i]
-        #expectation_k += Qdelta[outsideM_i] * Qdelta[outsideM_i] / const.t_delta
-        #expectation_tau += Qdelta[outsideM_i] * t /10**9
-        expectation_tau += deltaP_minus * t /10**9
+        #if 1.0/const.k_min < t:
+            #break
+        #Qdelta = Kmat.dot(stateQ)
+        #Qdelta = Kmat@stateQ
+        Qdelta = Kmatdot(Kmat,stateQ)
+        deltaP_minus = calcP_minus(Qdelta, outsideMlist)
+        totalP_minus += deltaP_minus
         stateQ += Qdelta
-        #print("stateQ[outsideP] = %s"%stateQ[outsideP_i])
-        #print("stateQ[outsideM] = %s"%stateQ[outsideM_i])
-        #exit()
+        expectation_tau += deltaP_minus * t /10**9
 
-        if stepN % 100 == 0:
+
+        #if stepN % 100 == 0:
+        #if exportQ < totalP_minus or stepN % 10000 == 0:
+        if exportQ < totalP_minus or stepN % 1000000 == 0:
+            #if 0.1 < exportQ:
+                #exit()
             totalP_plus = 0.0
             for outsideP_i in outsidePlist:
                 totalP_plus += stateQ[outsideP_i]
             with open("./throughstate.csv", "a") as wf:
                 #wf.write("%8.4f, %s, %s\n"%(t/10**9, stateQ[outsideP_i], stateQ[outsideM_i]))
-                wf.write("%8.4f, %s, %s\n"%(t/10**9, totalP_plus, totalP_minus))
+                wf.write("%10.7f, %s, %s\n"%(t/10**9, totalP_plus, totalP_minus))
             with open("./expectation.csv", "a") as wf:
                 wf.write("%8.4f, %s\n"%(t/10**9, expectation_tau))
         #if exporttime < t:
-        if stepN % 10000 == 0:
+        #if stepN % 10000 == 0:
             writeline = ""
             for i, stateQnum in enumerate(stateQ):
                 if stateQnum == 0.0:
@@ -240,6 +266,19 @@ def main(const):
             print("t = %8.4f mus"%(t/10**6), flush = True)
             #print("exporttime = %s"%exporttime)
             #if 1.0 - stateQ[outsideM_i] < 10e-6:
-            if 1.0 - totalP_minus < 10e-6:
+            if 1.0 - totalP_minus < 10e-4:
                 break
+            if 1.0 - exportQ <= exportQdelta *1.5:
+                exportQdelta *= 0.1
+            print("%s, %s"%(exportQ, exportQdelta))
+            exportQ += exportQdelta
+            exportQ = round(exportQ, 5)
+def Kmatdot(Kmat, stateQ):
+    return Kmat@stateQ
+def calcP_minus(Qdelta, outsideMlist):
+    deltaP_minus = 0.0
+    for outsideM_i in outsideMlist:
+        deltaP_minus += Qdelta[outsideM_i]
+    return deltaP_minus
+
 

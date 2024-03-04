@@ -49,6 +49,7 @@ def SHSearch(f, grad, hessian,
         print("start SHSearch", flush = True)
         if not os.path.exists(const.jobfilepath):
             os.mkdir(const.jobfilepath)
+        os.chdir(const.jobfilepath)
         if importinitialpointQ:
             importname = "%s/%s/initialpoint.csv"%(const.pwdpath, const.jobfilepath)
             print("importinitialpointQ = True: try read %s"%importname)
@@ -82,6 +83,8 @@ def SHSearch(f, grad, hessian,
             continue
 
         EQhess = hessian(eqpoint)
+        if EQhess is False:
+            continue
         eigNlist, _eigV = np.linalg.eigh(EQhess)
         f_point = f(eqpoint)
         chkdigQ = True
@@ -103,6 +106,9 @@ def SHSearch(f, grad, hessian,
                 else:
                     print("%s is not EQ point: eigN = %s"%(eqpoint, eigNlist), flush = True)
                     #print("%s is not EQ or TS point: eigN = %s"%(eqpoint, eigNlist), flush = True)
+                    print("grad = %s"%np.linalg.norm(grad(eqpoint)))
+                    eigV0 = _eigV[:,0]
+                    print("eigV0 = %s"%eigV0)
             else:
                 eqlist = None
                 tslist = None
@@ -270,6 +276,8 @@ def SHSearch(f, grad, hessian,
                     #print("%s -> pass"%SHSrank, flush = True)
                 if tslist is False:
                     exit()
+        os.chdir(const.pwdpath)
+        os.chdir(const.jobfilepath)
         if SHSrank == SHSroot:
             #IOpack.writeEND_exclusion(dirname, "TS", const)
             IOpack.writeEND_exclusion(dirname, "EQ", const)
@@ -296,8 +304,8 @@ def SHSearch(f, grad, hessian,
             tspoint = tspointlist[1:-1]
             dirname = "{0}/{1}/{2}".format(const.pwdpath, const.jobfilepath, tspointlist[0])
             tspoint = np.array(tspoint)
-            nearEQpoints = MinimumPath.main(tspoint, f, grad, hessian, dirname, SHSrank, SHSroot, SHScomm, const)
-            for nearEQpoint in nearEQpoints:
+            nearEQpoints = MinimumPath.main(tspoint, f, grad, hessian, dirname, SHSrank, SHSroot, SHScomm, optdigTH, const)
+            for nearEQpoint, deltax, deltaf in nearEQpoints:
                 #if const.calc_mpiQ:
                     #nearEQpoint = SHScomm.bcast(nearEQpoint, root = 0)
                 eqpoint, eqhess_inv = OPT.PoppinsMinimize(nearEQpoint, f, grad, hessian, SHSrank, SHSroot, optdigTH, const)
@@ -345,14 +353,15 @@ def SHSearch(f, grad, hessian,
                     if SHSrank == SHSroot:
                         eqlist, tslist, pointname = IOpack.chksamepoint_exportlist(
                             "EQ", eqlist, tslist, eqpoint, f_eqpoint, const)
-                        IOpack.exportconnectionlist_exclusion(tspointlist[0], pointname, const)
+                        IOpack.exportconnectionlist_exclusion(tspointlist[0], pointname, deltax, deltaf, const)
                     else:
                         eqlist = None
                 if const.calc_mpiQ:
                     eqlist        = SHScomm.bcast(eqlist, root = 0)
                 if eqlist is False:
                     exit()
-
+            os.chdir(const.pwdpath)
+            os.chdir(const.jobfilepath)
             if SHSrank == SHSroot:
                 #if os.path.exists("%s/running.txt"%dirname):
                     #os.remove("%s/running.txt"%dirname)

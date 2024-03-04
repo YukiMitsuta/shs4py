@@ -123,25 +123,44 @@ cpdef DTYPE_t IOE(np.ndarray nADD, np.ndarray nADDneibor, np.ndarray SQ, DTYPE_t
         return ADDfeM * cosdamp * cosdamp * cosdamp
     else:
         return 0.0
-cpdef np.ndarray IOE_grad(np.ndarray nADD, np.ndarray nADDneibor, np.ndarray SQ_inv, DTYPE_t ADDfeM, DTYPE_t r):
+cpdef np.ndarray IOE_grad(np.ndarray nADD, np.ndarray nADDneibor, np.ndarray SQ_inv, DTYPE_t ADDfeM):
     cdef:
-        DTYPE_t deltaTH, deltaTH_eps, cosdamp, xydot, IOE_center
-        np.ndarray q_x, q_y, returngrad, qx_i
+        DTYPE_t deltaTH, deltaTH_eps, cosdamp, xydot, IOE_center,IOE_plus,IOE_minus
+        np.ndarray q_x, q_y, returngrad, q_x_i,nADD_plus,nADD_minus
     #eps     = np.sqrt(np.finfo(float).eps)
-    eps     = 1.0e-4
+    eps     = 1.0e-3
     q_x     = np.dot(SQ_inv, nADD)
     q_y     = np.dot(SQ_inv, nADDneibor)
     deltaTH = angle(q_x, q_y)
     returngrad = np.zeros(len(nADD))
     if deltaTH <= np.pi * 0.5:
-        #cosdamp    = np.cos(deltaTH)
-        cosdamp    = cosADD(q_x, q_y)
-        IOE_center = - 3.0 * ADDfeM * cosdamp * cosdamp * np.sqrt(1.0 - cosdamp * cosdamp)
+        cosdamp    = np.cos(deltaTH)
+        #cosdamp    = cosADD(q_x, q_y)
+        #if cosdamp > 1.0:
+            #IOE_center = 0.0
+        #else:
+            #IOE_center = - 3.0 * ADDfeM * cosdamp * cosdamp * np.sqrt(1.0 - cosdamp * cosdamp)
+        IOE_center = ADDfeM * cosdamp * cosdamp * cosdamp
         for i in range(len(nADD)):
-            qx_i          = copy.copy(q_x)
-            qx_i[i]      += eps
-            deltaTH_eps   = angle(qx_i, q_y)
-            returngrad[i] = IOE_center * (deltaTH_eps - deltaTH) / eps
+            nADD_plus     = copy.copy(nADD)
+            nADD_plus[i] += eps
+            q_x_i     = np.dot(SQ_inv, nADD_plus)
+            deltaTH_eps   = angle(q_x_i, q_y)
+            if deltaTH_eps <= np.pi * 0.5:
+                cosdamp    = np.cos(deltaTH_eps)
+                IOE_plus = ADDfeM * cosdamp * cosdamp * cosdamp
+            else:
+                IOE_plus = 0.0
+            nADD_minus     = copy.copy(nADD)
+            nADD_minus[i] -= eps
+            q_x_i     = np.dot(SQ_inv, nADD_minus)
+            deltaTH_eps   = angle(q_x_i, q_y)
+            if deltaTH_eps <= np.pi * 0.5:
+                cosdamp    = np.cos(deltaTH_eps)
+                IOE_minus = ADDfeM * cosdamp * cosdamp * cosdamp
+            else:
+                IOE_minus = 0.0
+            returngrad[i] =  (IOE_plus - IOE_minus) / eps*0.5
 
 
         #xydot      = np.dot(q_x, q_y)

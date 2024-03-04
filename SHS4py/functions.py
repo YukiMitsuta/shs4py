@@ -33,14 +33,16 @@ import subprocess      as sp
 import numpy           as np
 import multiprocessing as mp
 
+class parallelClass():
+    pass
 class PlumedDatClass(object):
-    def __init__(self, plumedpath):
+    def __init__(self, plumedpath = ""):
         self.pldiclist = []
         if not os.path.exists(plumedpath):
             return
         contentsfieldQ = False
         for line in open(plumedpath):
-            if line[0] is "#":
+            if line[0] == "#":
                 continue
             if "..." in line:
                 if contentsfieldQ:
@@ -70,12 +72,12 @@ class PlumedDatClass(object):
         writeline       = ""
         option_Main_names = ["PRINT", "RESTRAINT", "TORSION", "MOLINFO",
                 "VES_LINEAR_EXPANSION", "BF_FOURIER", "TD_UNIFORM", "TD_WELLTEMPERED",
-                "OPT_AVERAGED_SGD"]
+                "OPT_AVERAGED_SGD", "RESTRAINT"]
         for pldic in self.pldiclist:
             notwriteQ = False
             if pldic["linefeedQ"]:
                 for k, v in pldic.items():
-                    if k is "options":
+                    if k == "options":
                         for a in v:
                             if equibliumQ:
                                 if "METAD" in a:
@@ -92,16 +94,16 @@ class PlumedDatClass(object):
                 for k, v in pldic.items():
                     if equibliumQ and "FILE" in k:
                         FILEname = copy.copy(v)
-                    if k is "options":
+                    if k == "options":
                         for a in v:
                             if "..." in a or optionMainName in a:
                                 continue
                             writeline += "%s \n"%a
                 for k, v in pldic.items():
-                    if equibliumQ and k is "FILE":
+                    if equibliumQ and k == "FILE":
                         FILEname = copy.copy(v)
-                    if not k is "comments" and not k is "options" and not k is "linefeedQ":
-                        if equibliumQ and k is "FILE":
+                    if not k == "comments" and not k == "options" and not k == "linefeedQ":
+                        if equibliumQ and k == "FILE":
                             writeline += "%s=%s_npt \n"%(k, v)
                         else:
                             writeline += "%s=%s \n"%(k, v)
@@ -114,7 +116,7 @@ class PlumedDatClass(object):
                 for k, v in pldic.items():
                     #if equibliumQ and k is "FILE":
                         #FILEname = copy.copy(v)
-                    if k is "options":
+                    if k == "options":
                         for a in v:
                             if equibliumQ:
                                 if "METAD" in a:
@@ -126,10 +128,10 @@ class PlumedDatClass(object):
                 if notwriteQ:
                     continue
                 for k, v in pldic.items():
-                    if k is "options":
+                    if k == "options":
                         continue
-                    if not k is "comments" and not k is "linefeedQ":
-                        if equibliumQ and k is "FILE":
+                    if not k == "comments" and not k == "linefeedQ":
+                        if equibliumQ and k == "FILE":
                             writeline += "%s=%s_npt "%(k, v)
                         else:
                             writeline += "%s=%s "%(k, v)
@@ -428,7 +430,7 @@ def periodicpoint(x, const, beforepoint = False):
     periodicpoint: periodic calculation of x
     """
     bdamp = copy.copy(x)
-    if const.periodicQ:
+    if const.allperiodicQ:
         if type(const.periodicmax) is float:
             for i in range(len(x)):
                 if beforepoint is False:
@@ -456,7 +458,7 @@ def importplumed(filename):
     contentsfieldQ = False
     returnlist = []
     for line in open(filename):
-        if line[0] is "#":
+        if line[0] == "#":
             continue
         if "..." in line:
             if contentsfieldQ:
@@ -493,20 +495,20 @@ def exportplumed(filename, pldiclist):
                 "VES_LINEAR_EXPANSION", "BF_FOURIER", "TD_UNIFORM", "TD_WELLTEMPERED",
                 "OPT_AVERAGED_SGD"]
             for k, v in pldic.items():
-                if k is "options":
+                if k == "options":
                     for a in v:
                         if a in option_Main_names:
                             optionMainanme = copy.copy(a)
                             writeline += "%s ...\n"%optionMainanme
                             break
             for k, v in pldic.items():
-                if k is "options":
+                if k == "options":
                     for a in v:
                         if "..." in a or optionMainanme in a:
                             continue
                         writeline += "%s \n"%a
             for k, v in pldic.items():
-                if not k is "comments" and not k is "options" and not k is "linefeedQ":
+                if not k == "comments" and not k == "options" and not k == "linefeedQ":
                     writeline += "%s=%s \n"%(k, v)
 
             if len(pldic["comments"]) != 0:
@@ -514,13 +516,13 @@ def exportplumed(filename, pldiclist):
             writeline += "... %s\n"%optionMainanme
         else:
             for k, v in pldic.items():
-                if k is "options":
+                if k == "options":
                     for a in v:
                         writeline += "%s "%a
             for k, v in pldic.items():
-                if k is "options":
+                if k == "options":
                     continue
-                if not k is "comments" and not k is "linefeedQ":
+                if not k == "comments" and not k == "linefeedQ":
                     writeline += "%s=%s "%(k, v)
             if len(pldic["comments"]) != 0:
                 writeline += " #%s\n"%(" ".join(pldic["comments"]))
@@ -528,3 +530,29 @@ def exportplumed(filename, pldiclist):
                 writeline += "\n"
     with open(filename, "w") as wf:
         wf.write(writeline)
+def mkUIdataClass(UIlist):
+    avelist      = []
+    reflist      = []
+    covinvlist   = []
+    Pbiasavelist = []
+    Klist        = []
+    Nlist        = []
+    UIdataClass = parallelClass()
+    if len(UIlist) != 0:
+        #print(UIlist[0].path)
+        #print(UIlist[1].N)
+        Nscale       = UIlist[0].N
+        for UI in UIlist:
+            avelist.append(      list(UI.ave))
+            reflist.append(      list(UI.ref))
+            covinvlist.append(   list(UI.covinv))
+            Pbiasavelist.append( UI.Pbiasave)
+            Klist.append(        UI.K)
+            Nlist.append(UI.N / Nscale)
+    UIdataClass.avelist      = np.array(avelist)
+    UIdataClass.reflist      = np.array(reflist)
+    UIdataClass.covinvlist   = np.array(covinvlist)
+    UIdataClass.Pbiasavelist = np.array(Pbiasavelist)
+    UIdataClass.Klist        = np.array(Klist)
+    UIdataClass.Nlist        = np.array(Nlist)
+    return UIdataClass

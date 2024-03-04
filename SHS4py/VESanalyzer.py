@@ -14,6 +14,13 @@ from scipy import interpolate
 class VESfuncC(object):
     def __init__(self, functionName, pldic, const):
         self.const = const
+        self.functionName = functionName
+        if self.const.calc_cupyQ:
+            if functionName != "BF_FOURIER":
+                if functionName != "BF_CHEBYSHEV":
+                    if functionName != "BF_CHEBYSHEV_SYMMETRY":
+                        print("Error; calc_cupy can applied only BF_FOURIER or BF_CHEBYSHEV")
+                        exit()
         if functionName == "BF_FOURIER":
             self.readpldic_triF(pldic)
             self.fourier(pldic)
@@ -388,15 +395,23 @@ class VESpotential(object):
                     if BFdic["LABEL"] == func_label:
                         VESdic["BFlist"].append(BFdic)
                         break
-            TD_label =  VESdic["TARGET_DISTRIBUTION"]
-            for TDdic in self.TDlist:
-                if TDdic["LABEL"] == TD_label:
-                    VESdic["TDdic"] = copy.copy(TDdic)
-                    break
-            else:
-                if self.rank == self.root:
-                    print("ERROR; There is not TARGET_DISTRIBUTION that is labeled as %s"%TD_label)
-                exit()
+
+            findTDQ = True
+            try:
+                TD_label =  VESdic["TARGET_DISTRIBUTION"]
+            except KeyError:
+                TDdic = {"options":"TD_UNIFORM"}
+                VESdic["TDdic"] = TDdic
+                findTDQ = False
+            if findTDQ:
+                for TDdic in self.TDlist:
+                    if TDdic["LABEL"] == TD_label:
+                        VESdic["TDdic"] = copy.copy(TDdic)
+                        break
+                else:
+                    if self.rank == self.root:
+                        print("ERROR; There is not TARGET_DISTRIBUTION that is labeled as %s"%TD_label)
+                    exit()
         for PRINTdic in PRINTlist:
             arglist = PRINTdic["ARG"].split(",")
         argVES = []
@@ -483,6 +498,7 @@ class VESpotential(object):
                     #VESdic["coefflist"].append(coeff + [float(line[-3])])
                     #coefflist.append(coeff + [alpha])
                     coeff["alpha"] = copy.copy(alpha)
+
                     coefflist.append(coeff)
 
                 if iterN in PickNlist:
@@ -560,6 +576,222 @@ class VESpotential(object):
                     continue
                 VESdic["f_grid"]    =  interpolate.RectBivariateSpline(x, y, z_f)
                 VESdic["grad_grid"] = [interpolate.RectBivariateSpline(x, y, z_grad[i]) for i in range(2)]
+        if self.const.calc_cupyQ:
+            if self.const.calc_mpiQ:
+                print("Error: cupy and mpi4py must not be used at the same time!")
+                exit()
+            self.useFourierQ     = False
+            self.useChebyshevQ   = False
+            indexlist_fourier    = []
+            indexlist_chebyshev  = []
+            chevindexmax = 0
+            indexevenQ = []
+            alphalist  = []
+            self.calctlist = [lambda x:x for _ in range(self.dim)]
+            self.tconstlist = [1.0 for _ in range(self.dim)]
+            self.FurierQs    = [False for _ in range(self.dim)]
+            self.chebyshevQs = [False for _ in range(self.dim)]
+            for VESdic in self.VESlist:
+                for coeff in VESdic["coefflist"]:
+                    indexcoeff_f = np.zeros(self.dim)
+                    indexcoeff_c = np.zeros(self.dim, dtype=int)
+                    evenQcoeff = [False for _ in range(self.dim)]
+                    for i, argorder in enumerate(VESdic["order"]):
+                        BFdic = VESdic["BFlist"][i]
+                        if "BF_FOURIER" in BFdic["options"]:
+                            self.useFourierQ = True
+                            self.FurierQs[argorder] = True
+                            idx = coeff[argorder]
+                            if idx != 0 and idx%2==0:
+                                idxevenQ = True
+                            else:
+                                idxevenQ = False
+                            idxmodified = ((coeff[argorder]-1)//2+1)
+                            indexcoeff_f[argorder] = idxmodified
+                            evenQcoeff[argorder] = idxevenQ
+                        elif "BF_CHEBYSHEV" in BFdic["options"]:
+                            self.calctlist[argorder] = VESdic["BFfunctions"][argorder].calc_t
+                            self.tconstlist[argorder] = VESdic["BFfunctions"][argorder].tconstlist
+                            self.useChebyshevQ = True
+                            self.chebyshevQs[argorder] = True
+                            idx = int(coeff[argorder])
+                            indexcoeff_c[argorder] = idx
+                            if chevindexmax < idx:
+                                chevindexmax = idx
+                        elif "BF_CHEBYSHEV_SYMMETRY" in BFdic["options"]:
+                            self.calctlist[argorder] = VESdic["BFfunctions"][argorder].calc_t
+                            self.chebyshevQs[argorder] = True
+                            self.useChebyshevQ = True
+                            idx = int(coeff[argorder])
+                            indexcoeff_c[argorder] = idx*2
+                            if chevindexmax < idx*2:
+                                chevindexmax = idx*2
+                        else:
+                            print("Error in VESpotential@VESanalyzer: BF cannot calculate")
+                            exit()
+                    indexlist_fourier.append(indexcoeff_f)
+                    indexlist_chebyshev.append(indexcoeff_c)
+                    indexevenQ.append(evenQcoeff)
+                    alphalist.append(coeff["alpha"])
+            if self.useFourierQ:
+                self.index_fourier_CP = self.const.cp.array(indexlist_fourier, 
+                                            dtype=self.const.cp.float32)
+                self.indexN_fourier = len(indexlist_fourier)
+                loaded_from_source = r'''
+extern "C"{
+__global__ void calctheta_f(const bool* evenQ, float* y, unsigned int N)
+{
+    unsigned int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    if (tid < N) {
+      if (evenQ[tid]) {
+        y[tid] = 1.570796327-y[tid];
+      } 
+    }
+}
+__global__ void calctheta_f_diffAll(const bool* evenQ, const bool* diffQ, float* y, unsigned int N)
+{
+    unsigned int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    if (tid < N) 
+    {
+      if (diffQ[tid]) {
+        if (evenQ[tid]) {
+          y[tid] = y[tid];
+        } else {
+          y[tid] = 1.570796327+y[tid];
+        }
+      } else {
+        if (evenQ[tid]) {
+          y[tid] = 1.570796327-y[tid];
+        }
+      }
+    }
+}
+__global__ void calctheta_f_diff(const bool* evenQ, float* y, unsigned int N)
+{
+    unsigned int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    if (tid < N) 
+    {
+      if (evenQ[tid]) {
+        y[tid] = y[tid];
+      } else {
+        y[tid] = 1.570796327+y[tid];
+      }
+    }
+}
+}'''
+                module = self.const.cp.RawModule(code=loaded_from_source)
+                self.ker_calctheta_f = module.get_function("calctheta_f")
+                self.ker_calctheta_f_diff = module.get_function("calctheta_f_diff")
+                self.ker_calctheta_f_diffAll = module.get_function("calctheta_f_diffAll")
+            if self.useChebyshevQ:
+                self.index_chebyshev_CP = self.const.cp.array(indexlist_chebyshev, 
+                                            dtype=self.const.cp.float32)
+                self.indexN_chevyshev = len(indexlist_chebyshev)
+                #module = self.const.cp.RawModule(code=makeChebyshevKernel_sympy(chevindexmax))
+                #module = self.const.cp.RawModule(code=makeChebyshevKernel())
+                #self.ker_chevF = module.get_function("chevF")
+                self.ker_chevF = self.const.cp.RawKernel(r'''
+extern "C" __global__ 
+void chevF(const float* ind, const float* x1, float* y) {
+    unsigned int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    if (ind[tid] < 0.5) {
+      y[tid] = 1.0;
+    } else if (0.5 < ind[tid] && ind[tid] < 1.5) {
+      y[tid] = x1[tid];
+    } else {
+      float f0=x1[tid];
+      float f1=1.0;
+      float fdamp;
+      int k;
+      for (k=0;k<ind[tid]-1; k++) {
+        fdamp = 2.0*x1[tid]*f0-f1;
+        f1=f0;
+        f0=fdamp;
+      }
+      y[tid] = fdamp;
+    }
+}
+''', "chevF")
+                #self.ker_chevF_diff = module.get_function("chevF_diff")
+                self.ker_chevF_diff = self.const.cp.RawKernel(r'''
+extern "C" __global__ 
+void chevF_diff(const float* ind, const bool* diffQ, const float* x1, float* y) {
+    unsigned int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    if (ind[tid] < 0.5) {
+      if (diffQ[tid]){
+        y[tid] = 0.0;
+      } else {
+        y[tid] = 1.0;
+      }
+    } else if (0.5 < ind[tid] && ind[tid] < 1.5) {
+      if (diffQ[tid]){
+        y[tid] = 1.0;
+      } else {
+        y[tid] = x1[tid];
+      }
+    } else {
+        float f0=x1[tid];
+        float f1=1.0;
+        float grad0=1.0;
+        float grad1=0.0;
+        float fdamp;
+        float graddamp;
+        int k;
+        for (k=0;k<ind[tid]-1; k++) {
+          fdamp = 2.0*x1[tid]*f0-f1;
+          f1=f0;
+          f0=fdamp;
+          if (diffQ[tid]){
+            graddamp = 2.0 * f0 + 2.0 * x1[tid] * grad0 - grad1;
+            grad1 = grad0;
+            grad0 = graddamp;
+          } 
+        }
+        if (diffQ[tid]){
+          y[tid] = fdamp;
+        } else {
+          y[tid] = graddamp;
+        }
+    }
+}
+''', "chevF_diff")
+                self.index_chebyshev = indexlist_chebyshev
+            if self.useFourierQ is False:
+                if self.useChebyshevQ is False:
+                    print("Error in VESpotential@VESanalyzer: cannot convert Base function to Cupy\n is this calcluation performed with BF_FOURIER or BF_CHEBYSHEV(_SYMMETORY) ?")
+                    exit()
+            self.indexevenQcp = self.const.cp.array(indexevenQ, dtype=self.const.cp.bool)
+            self.alphacp = self.const.cp.array(alphalist, dtype=self.const.cp.float32)
+
+
+
+#            for VESdic in self.VESlist:
+#                indexlist2 = []
+#                indexevenQ = []
+#                alphalist = []
+#                for coeff in VESdic["coefflist"]:
+#                    indexcoeff = []
+#                    evenQcoeff = []
+#                    for i, argorder in enumerate(VESdic["order"]):
+#                        idx = coeff[argorder]
+#                        if idx != 0 and idx%2==0:
+#                            idxevenQ = True
+#                        else:
+#                            idxevenQ = False
+#                        idxmodified = ((coeff[argorder]-1)//2+1)
+#                        indexcoeff.append(idxmodified)
+#                        evenQcoeff.append(idxevenQ)
+#                    indexlist2.append(indexcoeff)
+#                    indexevenQ.append(evenQcoeff)
+#                    alphalist.append(coeff["alpha"])
+#                indexcp = self.const.cp.array(indexlist2, dtype=self.const.cp.float32)
+#                indexevenQcp = self.const.cp.array(indexevenQ, dtype=self.const.cp.bool)
+#                alphacp = self.const.cp.array(alphalist, dtype=self.const.cp.float32)
+#                VESdic["indexCP"] = indexcp
+#                VESdic["indexevenQcp"] = indexevenQcp
+#                VESdic["alphacp"] = alphacp
+#                VESdic["N"] = len(indexlist2)
+
         if self.rank == self.root:
             print("end VESpotential", flush = True)
             print("Dimension = %s"%self.dim, flush = True)
@@ -678,24 +910,8 @@ class VESpotential(object):
                 mpicounter += 1
                 if mpicounter % self.size != self.rank:
                     continue
-                #for coeff in VESdic["coefflist"]:
-                    #ynum = 0
-                    #for i in range(self.dim):
-                        #if not i in coeff:
-                            #continue
-                        #if ynum == 0:
-                            #xdamp0 = xdamp[i]
-                        #elif ynum == 1:
-                            #xdamp1 = xdamp[i]
-                    #break
-                #xdamp0 = xdamp[VESdic["CVindex"][0]]
-                #xdamp1 = xdamp[VESdic["CVindex"][1]]
                 xdamp0 = xdamp[VESdic["order"][0]]
                 xdamp1 = xdamp[VESdic["order"][1]]
-                #returnf += VESdic["f_grid"](xdamp)
-                #print(VESdic["f_grid"](xdamp0, xdamp1))
-                #print(VESdic["f_grid"].ev(xdamp0, xdamp1))
-
                 returnf += VESdic["f_grid"].ev(xdamp0, xdamp1)
             if self.const.calc_mpiQ:
                 returnf_g = self.comm.gather(returnf, root=0)
@@ -703,36 +919,86 @@ class VESpotential(object):
                     returnf = sum(returnf_g)
                 returnf = self.comm.bcast(returnf, root=0)
             return returnf
-            #returnf_grid = copy.copy(returnf)
-            #returnf = 0.0
-            #print("*"*40)
+        if self.const.calc_cupyQ:
+            if self.const.calc_mpiQ:
+                print("Error: cupy and mpi4py must not be used at the same time!")
+                exit()
+            returnf = 0.0
+            xdampCP = self.const.cp.array(
+                                    [self.calctlist[argorder](xdamp[argorder])
+                                     for argorder in range(self.dim)
+                                    ]
+                            )
+            #print(xdampCP)
+            if self.useFourierQ:
+                y_f = self.const.cp.zeros((self.indexN_fourier, self.dim), dtype=self.const.cp.float32)
+                y_f += self.index_fourier_CP
+                #y_f = self.const.cp.array(self.index_fourier_CP)
+                for argorder in range(self.dim):
+                    y_f[:,argorder] *= xdampCP[argorder]
+                #self.ker_calctheta_f((self.indexN_fourier,),(self.dim,),
+                self.ker_calctheta_f((self.indexN_fourier,),(self.dim,),
+                                (self.indexevenQcp, y_f, self.indexN_fourier*self.dim))
+                y_f  = self.const.cp.cos(y_f)
+                y_f  = self.const.cp.prod(y_f, axis=1)
+            if self.useChebyshevQ:
+                xdampCPrepeat = self.const.cp.array([xdampCP],dtype=self.const.cp.float32)
+                xdampCPrepeat = self.const.cp.repeat(xdampCPrepeat,self.indexN_chevyshev, axis=0)
+                y_c = self.const.cp.zeros((self.indexN_chevyshev, self.dim), dtype=self.const.cp.float32)
+                #print( self.const.cp.sum(y_c))
+                #for argorder in range(self.dim):
+                    #y_c[:,argorder] += xdampCP[argorder]
+                #xdampCP = self.const.cp.repeat(xdampCP,self.indexN_chevyshev,axis=0)
+                self.ker_chevF((self.indexN_chevyshev,),(self.dim,),
+                        (self.index_chebyshev_CP, xdampCPrepeat, y_c))
+                #print("y_c; ",y_c[:1])
+                #print("index;",self.index_chebyshev_CP[-10:])
+                #print("xdamp;",xdampCPrepeat[-10:])
+                #print("y_c; ",y_c[-10:])
+                y_c  = self.const.cp.prod(y_c, axis=1)
+                #print(y_c[-2000:-1000])
+                #print(y_c[:1000])
+#                y_c = []
+#                #y_c = self.const.cp.zeros(self.indexN_chevyshev, dtype=self.const.cp.float32)
+#                for i, indexlist in enumerate(self.index_chebyshev):
+#                    pind = 1.0
+#                    for argorder in range(self.dim):
+#                        if self.chebyshevQs[argorder]:
+#                            pind *= self.VESlist[0]["BFfunctions"][argorder].f(xdamp[argorder],indexlist[argorder])
+#                    #print(pind)
+#                    #y_c[i] += float(pind)
+#                    y_c.append(float(pind))
+#                y_c = self.const.cp.array(y_c, dtype=self.const.cp.float32)
+
+            if self.useFourierQ and self.useChebyshevQ:
+                y = y_f*y_c
+            elif self.useFourierQ:
+                y = y_f
+            elif self.useChebyshevQ:
+                y = y_c
+            y *= self.alphacp
+            y  = self.const.cp.sum(y)
+            self.TDdic = self.VESlist[0]["TDdic"]
+            returnf -= self.f_TD(xdamp, y)
+            #print(xdamp)
+            #print("returnf(cupy)",returnf)
+            #exit()
+
+            return float(returnf)
+
+            returnf = 0.0
         mpicounter = -1
         for VESdic in self.VESlist:
-            #mpicounter += 1
-            #if mpicounter % self.size != self.rank:
-                #continue
             self.TDdic = VESdic["TDdic"]
             f_partVES = 0.0
             for coeff in VESdic["coefflist"]:
                 mpicounter += 1
                 if mpicounter % self.size != self.rank:
                     continue
-                #y = float(coeff[self.dim])
-                #y = coeff[self.dim]
                 y = float(coeff["alpha"])
-                #for i in range(self.dim):
-                    #if coeff[i] == "Nan":
-                        #continue
-                    #if not i in coeff:
-                        #continue
                 for argorder in VESdic["order"]:
-                    #y *= VESdic["BFfunctions"][i].f(xdamp[i], coeff[i])
-                    #print("argorder = %s"%argorder)
-                    #print(xdamp[argorder])
-                    #print(coeff[argorder])
                     y *= VESdic["BFfunctions"][argorder].f(xdamp[argorder], coeff[argorder])
                 f_partVES -= y
-            #print(f_partVES)
             returnf += self.f_TD(xdamp, f_partVES)
         if self.const.calc_mpiQ:
             returnf_g = self.comm.gather(returnf, root=0)
@@ -745,6 +1011,8 @@ class VESpotential(object):
         #print(x)
         #print(xdamp)
         #print(returnf)
+        #print("returnf(cpu)",returnf)
+        #exit()
         return returnf
     def f_stdev(self, x):
         returnflist = [0.0 for _ in range(len(self.VESlist[0]["coefflistlist"]))]
@@ -787,30 +1055,15 @@ class VESpotential(object):
                 xdamp[i] = abs(xdamp[i])
         returngrad = np.zeros(self.dim)
         if self.const.gridQ:
-        #if False:
             mpicounter = -1
             for VESdic in self.VESlist:
                 mpicounter += 1
                 if mpicounter % self.size != self.rank:
                     continue
-                #for coeff in VESdic["coefflist"]:
-                    #ynum = 0
-                    #for i in range(self.dim):
-                        #if not i in coeff:
-                            #continue
-                        #if ynum == 0:
-                            #xdamp0 = xdamp[i]
-                        #elif ynum == 1:
-                            #xdamp1 = xdamp[i]
-                    #break
-                #xdamp0 = xdamp[VESdic["CVindex"][0]]
-                #xdamp1 = xdamp[VESdic["CVindex"][1]]
                 xdamp0 = xdamp[VESdic["order"][0]]
                 xdamp1 = xdamp[VESdic["order"][1]]
 
                 for i_grad in range(2):
-                    #returngrad[i_grad] += VESdic["f_grid"][i_grad](xdamp)
-                    #returngrad[i_grad] += VESdic["grad_grid"][i_grad].ev(xdamp0,xdamp1)
                     returngrad[VESdic["order"][i_grad]] += VESdic["grad_grid"][i_grad].ev(xdamp0,xdamp1)
             if self.const.calc_mpiQ:
                 returngrad_g = self.comm.gather(returngrad, root=0)
@@ -819,8 +1072,6 @@ class VESpotential(object):
                     for returngraddamp in returngrad_g:
                         returngrad += returngraddamp
                 returngrad = self.comm.bcast(returngrad, root=0)
-
-            #print("returngrad = %s"%returngrad)
             if self.const.CVfixQ:
                 returngraddamp = np.zeros(len(x))
                 i_index = 0
@@ -830,38 +1081,50 @@ class VESpotential(object):
                     returngraddamp[i_index] = returngrad[i]
                     i_index += 1
                 returngrad = returngraddamp
-            #print(x, flush = True)
-            #print(xdamp, flush = True)
-            #print(returngrad, flush = True)
-            #returngrad_grid = copy.copy(returngrad)
-            #returngrad = np.zeros(self.dim)
             return returngrad
-        mpicounter = -1
-        for VESdic in self.VESlist:
-            self.TDdic = VESdic["TDdic"]
-            grad_partVES = np.zeros(self.dim)
-            for coeff in VESdic["coefflist"]:
-                mpicounter += 1
-                if mpicounter % self.size != self.rank:
-                    continue
-                for i_grad in range(self.dim):
-                    if not i_grad in coeff:
+        if self.const.calc_cupyQ:
+            if self.const.calc_mpiQ:
+                print("Error: cupy and mpi4py must not be used at the same time!")
+                exit()
+            returngrad = np.zeros(self.dim)
+            #xdampCP      = self.const.cp.array(
+                                    #[self.calctlist[argorder](xdamp[argorder])
+                                     #for argorder in range(self.dim)
+                                    #]
+                            #)
+            #xdampCP      = xdamp
+            returngrad = self.grad_partial_cupyAll(xdamp)
+            #returngrad = self.grad_TD(xdamp, returngrad)
+            returngrad = np.array(returngrad)
+        else:
+        #if True:
+            returngrad = np.zeros(self.dim)
+            mpicounter = -1
+            for VESdic in self.VESlist:
+                self.TDdic = VESdic["TDdic"]
+                grad_partVES = np.zeros(self.dim)
+                for coeff in VESdic["coefflist"]:
+                    mpicounter += 1
+                    if mpicounter % self.size != self.rank:
                         continue
-                    #if coeff[i_grad] == "Nan":
-                        #continue
-                    #y = float(coeff[self.dim])
-                    #y = coeff[self.dim]
-                    y = float(coeff["alpha"])
-                    #for i in range(self.dim):
-                    for i in VESdic["order"]:
-                        #if not i in coeff:
+                    for i_grad in range(self.dim):
+                        if not i_grad in coeff:
+                            continue
+                        #if coeff[i_grad] == "Nan":
                             #continue
-                        if i == i_grad:
-                            y *= VESdic["BFfunctions"][i].grad(xdamp[i], coeff[i])
-                        else:
-                            y *= VESdic["BFfunctions"][i].f(xdamp[i], coeff[i])
-                    grad_partVES[i_grad] -= y
-            returngrad += self.grad_TD(xdamp, grad_partVES)
+                        #y = float(coeff[self.dim])
+                        #y = coeff[self.dim]
+                        y = float(coeff["alpha"])
+                        #for i in range(self.dim):
+                        for i in VESdic["order"]:
+                            #if not i in coeff:
+                                #continue
+                            if i == i_grad:
+                                y *= VESdic["BFfunctions"][i].grad(xdamp[i], coeff[i])
+                            else:
+                                y *= VESdic["BFfunctions"][i].f(xdamp[i], coeff[i])
+                        grad_partVES[i_grad] -= y
+                returngrad += self.grad_TD(xdamp, grad_partVES)
         if self.const.calc_mpiQ:
             returngrad_g = self.comm.gather(returngrad, root=0)
             if self.rank == self.root:
@@ -870,6 +1133,8 @@ class VESpotential(object):
                     returngrad += returngraddamp
             returngrad = self.comm.bcast(returngrad, root=0)
             #exit()
+        #print("returngrad(cpu) ",returngrad)
+        #exit()
         if self.const.CVfixQ:
             returngraddamp = np.zeros(len(x))
             i_index = 0
@@ -888,6 +1153,193 @@ class VESpotential(object):
             #if 1.0 < np.linalg.norm(_d):
                 #print(_x)
 
+        #print("returngrad ",np.linalg.norm(returngrad))
+        return returngrad
+    def grad_partial_cupy(self, VESdic, xdampCP):
+        returngrad = np.zeros(self.dim)
+        argN         = len(VESdic["order"])
+        indexcp      = VESdic["indexCP"]
+        indexevenQcp = VESdic["indexevenQcp"]
+        alphacp      = VESdic["alphacp"]
+        for i_order, i_grad in enumerate(VESdic["order"]):
+            grad_cp  = self.const.cp.zeros((VESdic["N"], argN), dtype=self.const.cp.float32)
+            grad_cp += indexcp
+            diffQ    = []
+            for argorder in VESdic["order"]:
+                if i_grad == argorder:
+                    diffQ.append(True)
+                else:
+                    diffQ.append(False)
+            diffQ   = self.const.cp.array([[diffQ]])
+            diffQcp = self.const.cp.repeat(diffQ,VESdic["N"],axis=0)
+            for i, argorder in enumerate(VESdic["order"]):
+                grad_cp[:,i] *= xdampCP[argorder]
+            self.const.ker_calctheta_f_diff((VESdic["N"],),(argN,),
+                        (self.indexcp, self.indexevenQcp, diffQcp, grad_cp, VESdic["N"]*argN))
+            grad_cp  = self.const.cp.cos(grad_cp)
+            grad_cp  = self.const.cp.prod(grad_cp, axis=1)
+            grad_cp *= alphacp
+            grad_cp *= indexcp[:,i_order]
+            grad_cp  = self.const.cp.sum(grad_cp)
+            returngrad[i_grad] -= grad_cp
+        return returngrad
+    def grad_partial_cupyAll(self, xdamp):
+        #xdampCP    = self.const.cp.array(xdamp)
+        xdampCP = self.const.cp.array(
+                                    [self.calctlist[argorder](xdamp[argorder])
+                                     for argorder in range(self.dim)
+                                    ]
+                            )
+        returngrad = np.zeros(self.dim)
+        if self.useFourierQ:
+            y_f = self.const.cp.zeros((self.indexN_fourier, self.dim), dtype=self.const.cp.float32)
+            y_f += self.index_fourier_CP
+            for argorder in range(self.dim):
+                y_f[:,argorder] *= xdampCP[argorder]
+            self.ker_calctheta_f((self.indexN_fourier,),(self.dim,),
+                                (self.indexevenQcp, y_f, self.indexN_fourier*self.dim))
+            y_f  = self.const.cp.cos(y_f)
+        if self.useChebyshevQ:
+            xdampCPrepeat = self.const.cp.array([xdampCP], dtype=self.const.cp.float32)
+            xdampCPrepeat = self.const.cp.repeat(xdampCPrepeat,self.indexN_chevyshev, axis=0)
+#            y_c = []
+#            for i, indexlist in enumerate(self.index_chebyshev):
+#                pind = 1.0
+#                for argorder in range(self.dim):
+#                    if self.chebyshevQs[argorder]:
+#                        pind *= self.VESlist[0]["BFfunctions"][argorder].f(xdamp[argorder],indexlist[argorder])
+#                y_c.append(float(pind))
+#            y_c = self.const.cp.array(y_c, dtype=self.const.cp.float32)
+            y_c = self.const.cp.zeros((self.indexN_chevyshev, self.dim), dtype=self.const.cp.float32)
+            self.ker_chevF((self.indexN_chevyshev,),(self.dim,),
+                        (self.index_chebyshev_CP, xdampCPrepeat, y_c))
+            y_c  = self.const.cp.prod(y_c, axis=1)
+        for i_grad in range(self.dim):
+            #print("xdampcp",xdampCP)
+            if self.useFourierQ:
+                if self.FurierQs[i_grad]:
+                    grad_f = self.const.cp.zeros((self.indexN_fourier, self.dim), dtype=self.const.cp.float32)
+                    grad_f += self.index_fourier_CP
+                    #grad_f = self.const.cp.array(self.index_fourier_CP)
+                    for argorder in range(self.dim):
+                        grad_f[:,argorder] *= xdampCP[argorder]
+                    diffQ= [False for _ in range(self.dim)]
+                    diffQ[i_grad] = True
+                    diffQ = self.const.cp.array([diffQ])
+                    diffQcp = self.const.cp.repeat(diffQ,self.indexN_fourier,axis=0)
+                    #print(diffQcp)
+                    #print("1144;i ",grad_f[:,i_grad])
+                    #print("1145; ",self.indexevenQcp[:,i_grad])
+                    self.ker_calctheta_f_diffAll((self.indexN_fourier,),(self.dim,),
+                        (self.indexevenQcp, diffQcp, grad_f, self.indexN_fourier*self.dim))
+                    #print("1148; ",grad_f[:,i_grad])
+                    #grad_f2 = self.const.cp.cos(grad_f)
+                    #print("1150; ",grad_f2[:,i_grad])
+                    #grad_f2  = self.const.cp.prod(grad_f2, axis=1)
+                    grad_f = self.const.cp.cos(grad_f)
+                    grad_f  = self.const.cp.prod(grad_f, axis=1)
+
+
+#                    grad_f_diff  = self.const.cp.zeros((self.indexN_fourier,2), 
+#                                        dtype=self.const.cp.float32)
+#                    grad_f_diff[:,0] += self.index_fourier_CP[:,i_grad]
+#                    grad_f_diff *= xdampCP[i_grad]
+#                    evenQcp_diff  = self.const.cp.zeros((self.indexN_fourier,2), 
+#                                        dtype=self.const.cp.float32)
+#                    evenQcp_diff[:,0] = self.indexevenQcp[:,i_grad]
+#                    print("1160; ",grad_f_diff)
+#                    print("1161: ",evenQcp_diff)
+#                    self.ker_calctheta_f_diff((self.indexN_fourier,),(2,),
+#                        (evenQcp_diff, grad_f_diff, self.indexN_fourier*2))
+#                    grad_f_diff = grad_f_diff[:,0]
+#                    print("1165; ",grad_f_diff)
+#                    grad_f_diff = self.const.cp.cos(grad_f_diff)
+#                    print("1167; ",grad_f_diff)
+#                    #grad_f_diff *= self.index_fourier_CP[:,i_grad]
+#                    grad_f = self.const.cp.zeros((self.indexN_fourier, self.dim), dtype=self.const.cp.float32)
+#                    grad_f += y_f
+#                    #grad_f = self.const.cp.array(y_f)
+#                    grad_f[:,i_grad] = 1.0
+#                    grad_f  = self.const.cp.prod(grad_f, axis=1)
+#                    grad_f *= grad_f_diff
+#                    #print(grad_f_diff)
+#                    print("="*100)
+#                    print("grad_f;  ",grad_f)
+#                    print("grad_f2; ",grad_f2)
+#                    print("="*100)
+#                    #grad_f = grad_f2
+                else:
+                    #grad_f = self.const.cp.zeros((self.indexN_fourier, self.dim), dtype=self.const.cp.float32)
+                    #grad_f += y_f
+                    grad_f = self.const.cp.array(y_f)
+                    grad_f  = self.const.cp.prod(grad_f, axis=1)
+                #print("="*100)
+                #print("i_grad;",i_grad)
+                #print("grad_f;",grad_f)
+                #print("="*100)
+            if self.useChebyshevQ:
+#                diffQ = []
+#                for argorder in range(self.dim):
+#                    if self.chebyshevQs[argorder]:
+#                        if i_grad == argorder:
+#                            diffQ.append(True)
+#                        else:
+#                            diffQ.append(False)
+#                    else:
+#                            diffQ.append(False)
+#                diffQ = self.const.cp.array([[diffQ]])
+#                diffQcp = self.const.cp.repeat(diffQ,self.indexN_fourier,axis=0)
+##
+#                grad_c = self.const.cp.zeros((self.indexN_chevyshev, self.dim), 
+#                                    dtype=self.const.cp.float32)
+#
+#                for argorder in range(self.dim):
+#                    grad_c[:,argorder] += xdampCP[argorder]
+#                self.ker_chevF_diff((self.indexN_chevyshev,),(self.dim,),
+#                                (self.index_chebyshev_CP, diffQcp, xdampCPrepeat, grad_c))
+#                grad_c  = self.const.cp.prod(grad_c, axis=1)
+#
+##                #grad_c = self.const.cp.ones((self.indexN_chevyshev,), 
+##                                    #dtype=self.const.cp.float32)
+##
+
+
+                #if self.chebyshevQs[i_grad]:
+                if False:
+                    grad_c = []
+                    #grad_c = self.const.cp.zeros(self.indexN_chevyshev, dtype=self.const.cp.float32)
+                    for i, indexlist in enumerate(self.index_chebyshev):
+                        pind = 1.0
+                        for argorder in range(self.dim):
+                            if self.chebyshevQs[argorder]:
+                                if i_grad == argorder:
+                                    #print(self.VESlist[0]["BFfunctions"][argorder].grad(xdamp[argorder],indexlist[argorder]))
+                                    pind *= self.VESlist[0]["BFfunctions"][argorder].grad(xdamp[argorder],indexlist[argorder])
+                                else:
+                                    pind *= self.VESlist[0]["BFfunctions"][argorder].f(xdamp[argorder],indexlist[argorder])
+                        #grad_c[i] += float(pind)
+                        grad_c.append(float(pind))
+                    grad_c = self.const.cp.array(grad_c, dtype=self.const.cp.float32)
+                    #print(grad_c)
+                else:
+                    grad_c = self.const.cp.array(y_c)
+                #print("+"*100)
+                #print("grad_f; ",grad_f)
+                #print("grad_c; ",grad_c)
+                #print("+"*100)
+            if self.useFourierQ and self.useChebyshevQ:
+                grad_cp = grad_f*grad_c
+            elif self.useFourierQ:
+                grad_cp = grad_f
+            elif self.useChebyshevQ:
+                grad_cp = grad_c
+            grad_cp *= self.alphacp
+            if self.FurierQs[i_grad]:
+                grad_cp *= self.index_fourier_CP[:,i_grad]
+            grad_cp  = self.const.cp.sum(grad_cp)
+            returngrad[i_grad] -= grad_cp
+        #print("returngrad(cupy) ",returngrad)
+        #exit()
         return returngrad
     def hessian(self, x):
         if self.const.CVfixQ:
@@ -905,55 +1357,48 @@ class VESpotential(object):
         returnhess = np.zeros((self.dim, self.dim))
         for VESdic in self.VESlist:
             self.TDdic = VESdic["TDdic"]
-            #hess_partVES = np.zeros((self.dim, self.dim))
             for coeffN, coeff in enumerate(VESdic["coefflist"]):
                 if coeffN % self.size != self.rank:
                     continue
-                #for i_hess in range(self.dim):
                 for i_hess in VESdic["order"]:
-                    #if coeff[i_hess] == "Nan":
-                        #continue
-                    #if not i_hess in coeff:
-                        #continue
-                    #for j_hess in range(i_hess, self.dim):
-                    for j_hess in VESdic["order"]:
-                        if i_hess < j_hess:
-                            continue
-                        #if coeff[j_hess] == "Nan":
-                            #continue
-                        #if not j_hess in coeff:
-                            #continue
-                        #y = float(coeff[self.dim])
-                        y = float(coeff["alpha"])
-                        if i_hess == j_hess:
-                            #for i in range(self.dim):
-                                #if coeff[i] == "Nan":
-                                    #continue
-                                #if not i in coeff:
-                                    #continue
-                            for i in VESdic["order"]:
-                                if i == i_hess:
-                                    y *= VESdic["BFfunctions"][i].gradgrad(xdamp[i], coeff[i])
-                                else:
-                                    y *= VESdic["BFfunctions"][i].f(xdamp[i], coeff[i])
-                            #hess_partVES[i_hess, i_hess] -= y
-                            returnhess[i_hess, i_hess] -= y
+                    y = float(coeff["alpha"])
+                    for i in VESdic["order"]:
+                        if i == i_hess:
+                            y *= VESdic["BFfunctions"][i].gradgrad(xdamp[i], coeff[i])
                         else:
-                            #for i in range(self.dim):
-                                #if coeff[i] == "Nan":
-                                    #continue
-                                #if not i in coeff:
-                                    #continue
+                            y *= VESdic["BFfunctions"][i].f(xdamp[i], coeff[i])
+                    returnhess[i_hess, i_hess] -= y
+        #returnhess_cupy = copy.copy(returnhess)
+        if self.const.calc_cupyQ:
+            #returnhess_cupy  += self.hess_partial_cupyAll(xdamp)
+            returnhess  += self.hess_partial_cupyAll(xdamp)
+        #print(returnhess_cupy)
+        else:
+        #if True:
+            for VESdic in self.VESlist:
+                self.TDdic = VESdic["TDdic"]
+                for coeffN, coeff in enumerate(VESdic["coefflist"]):
+                    if coeffN % self.size != self.rank:
+                        continue
+                    for i_hess in VESdic["order"]:
+                        for j_hess in VESdic["order"]:
+                            if i_hess <= j_hess:
+                                continue
+                            y = float(coeff["alpha"])
                             for i in VESdic["order"]:
                                 if i == i_hess or i == j_hess:
                                     y *= VESdic["BFfunctions"][i].grad(xdamp[i], coeff[i])
                                 else:
                                     y *= VESdic["BFfunctions"][i].f(xdamp[i], coeff[i])
-                            #hess_partVES[i_hess, j_hess] -= y
-                            #hess_partVES[j_hess, i_hess] -= y
                             returnhess[i_hess, j_hess] -= y
                             returnhess[j_hess, i_hess] -= y
-            #returnhess += self.hessian_TD(xdamp, hess_partVES)
+        #print(returnhess_cupy)
+        #print(returnhess)
+        #hessdamp = returnhess - returnhess_cupy
+        #for i_hess in range(self.dim):
+            #for j_hess in range(self.dim):
+                #print("(%s,%s)-> % 10.9f"%(i_hess,j_hess,hessdamp[i_hess,j_hess]))
+        #exit()
         returnhess = self.hessian_TD(xdamp, returnhess)
         if self.const.calc_mpiQ:
             returnhess_g = self.comm.gather(returnhess, root=0)
@@ -976,6 +1421,79 @@ class VESpotential(object):
                     j_index+= 1
                 i_index += 1
             returnhess = returnhessdamp
+        return returnhess
+    def hess_partial_cupyAll(self, xdamp):
+        xdampCP = self.const.cp.array(
+                                    [self.calctlist[argorder](xdamp[argorder])
+                                     for argorder in range(self.dim)
+                                    ]
+                            )
+        #print("xdampCP;",xdampCP)
+        if self.useFourierQ:
+            y_f = self.const.cp.zeros((self.indexN_fourier, self.dim), dtype=self.const.cp.float32)
+            y_f += self.index_fourier_CP
+            for argorder in range(self.dim):
+                y_f[:,argorder] *= xdampCP[argorder]
+            self.ker_calctheta_f((self.indexN_fourier,),(self.dim,),
+                                (self.indexevenQcp, y_f, self.indexN_fourier*self.dim))
+            y_f  = self.const.cp.cos(y_f)
+        if self.useChebyshevQ:
+            xdampCPrepeat = self.const.cp.array([xdampCP], dtype=self.const.cp.float32)
+            xdampCPrepeat = self.const.cp.repeat(xdampCPrepeat,self.indexN_chevyshev, axis=0)
+            y_c = self.const.cp.zeros((self.indexN_chevyshev, self.dim), dtype=self.const.cp.float32)
+            #self.ker_chevF((self.indexN_chevyshev,),(self.dim,),
+                                #(self.index_chebyshev_CP, xdampCPreleat, y_c, self.indexN_chevyshev*self.dim))
+            self.ker_chevF((self.indexN_chevyshev,),(self.dim,),
+                        (self.index_chebyshev_CP, xdampCPrepeat, y_c))
+            #print(self.index_chebyshev_CP[-2])
+            #print(y_c[-1])
+            y_c  = self.const.cp.prod(y_c, axis=1)
+        returnhess = np.zeros((self.dim,self.dim))
+        for i_hess in range(self.dim):
+            for j_hess in range(self.dim):
+                if i_hess <= j_hess:
+                    continue
+                if self.useFourierQ:
+                    if self.FurierQs[i_hess] or self.FurierQs[j_hess]:
+                        grad_f = self.const.cp.zeros((self.indexN_fourier, self.dim),
+                                                            dtype=self.const.cp.float32)
+                        grad_f += self.index_fourier_CP
+                        for argorder in range(self.dim):
+                            grad_f[:,argorder] *= xdampCP[argorder]
+                        diffQ= [False for _ in range(self.dim)]
+                        diffQ[i_hess] = True
+                        diffQ[j_hess] = True
+                        diffQ = self.const.cp.array([diffQ])
+                        diffQcp = self.const.cp.repeat(diffQ,self.indexN_fourier,axis=0)
+                        self.ker_calctheta_f_diffAll((self.indexN_fourier,),(self.dim,),
+                            (self.indexevenQcp, diffQcp, grad_f, self.indexN_fourier*self.dim))
+                        grad_f = self.const.cp.cos(grad_f)
+                        grad_f  = self.const.cp.prod(grad_f, axis=1)
+                    else:
+                        grad_f = self.const.cp.array(y_f)
+                        grad_f  = self.const.cp.prod(grad_f, axis=1)
+                if self.useChebyshevQ:
+                    if self.chebyshevQs[i_hess] or self.chebyshevQs[j_hess]:
+                        if False:
+                            grad_c = []
+                        else:
+                            grad_c = self.const.cp.array(y_c)
+                    else:
+                        grad_c = self.const.cp.array(y_c)
+                if self.useFourierQ and self.useChebyshevQ:
+                    grad_cp = grad_f*grad_c
+                elif self.useFourierQ:
+                    grad_cp = grad_f
+                elif self.useChebyshevQ:
+                    grad_cp = grad_c
+                grad_cp *= self.alphacp
+                if self.FurierQs[i_hess]:
+                    grad_cp *= self.index_fourier_CP[:,i_hess]
+                if self.FurierQs[j_hess]:
+                    grad_cp *= self.index_fourier_CP[:,j_hess]
+                grad_cp  = self.const.cp.sum(grad_cp)
+                returnhess[i_hess,j_hess] -= grad_cp
+                returnhess[j_hess,i_hess] -= grad_cp
         return returnhess
     def f_TD(self, x, returnf):
         if "TD_UNIFORM" in self.TDdic["options"]:
@@ -1023,3 +1541,159 @@ class VESpotential(object):
                 _x.append(x[x_index])
                 x_index += 1
         return np.array(_x)
+def makeChebyshevKernel():
+    """
+    
+    """
+    loaded_from_source = r'''
+extern "C"{
+__global__ void chevF(const int* ind, const float* x1, float* y, \
+                              unsigned int N)
+{
+    int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    //if (tid < N)
+    //{
+      if (ind[tid] == 0) {
+        y[tid] = 1.0;
+      } else if (ind[tid] == 1) {
+        y[tid] = x1[tid];
+      } else {
+        float f0=x1[tid];
+        float f1=1.0;
+        //float fdamp = 2.0*x1[tid]*f0-f1;
+        float fdamp = f0;
+        int k;
+        //for (k=0;k<ind[tid]; k++) {
+        for (k=0;k<0; k++) {
+          f1=f0;
+          f0=fdamp+0.0;
+          fdamp = 2.0*x1[tid]*f0-f1;
+        }
+        y[tid] = fdamp;
+      }
+    //}
+}
+__global__ void chevF_diff(const int* ind, const float* x1, const bool* diffQ, float* y, \
+                              unsigned int N)
+{
+    unsigned int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    if (tid < N)
+    {
+      if (ind[tid] == 0) {
+        if (diffQ[tid]){
+          y[tid] = 0.0;
+        } else {
+          y[tid] = 1.0;
+        }
+      } else if (ind[tid] == 1) {
+        if (diffQ[tid]){
+          y[tid] = 1.0;
+        } else {
+          y[tid] = x1[tid];
+        }
+      } else {
+        float f0=x1[tid];
+        float f1=1.0;
+        float grad0=1.0;
+        float grad1=0.0;
+        float fdamp;
+        float graddamp;
+        int k;
+        for (k=0;k<ind[tid]; k++) {
+          fdamp = 2.0*x1[tid]*f0-f1;
+          f0=f1;
+          f1=fdamp;
+          if (diffQ[tid]){
+            graddamp = 2.0 * f0 + 2.0 * x1[tid] * grad0 - grad1;
+            grad1 = grad0;
+            grad0 = graddamp;
+          } 
+        }
+        if (diffQ[tid]){
+          y[tid] = fdamp;
+        } else {
+          y[tid] = graddamp;
+        }
+      }
+    }
+}
+}'''
+    return loaded_from_source
+def makeChebyshevKernel_sympy(chevindexmax):
+    """
+    
+    """
+    import sympy 
+    x = sympy.Symbol('x')
+    Tlist = [1,x]
+    for i in range(chevindexmax):
+        T = 2*x*Tlist[-1] -Tlist[-2]
+        Tlist.append(sympy.simplify(T))
+        #Tlist.append(T)
+    Tdiffs = []
+    for T in Tlist:
+        Tdiff = sympy.diff(T,x)
+        Tdiff = sympy.simplify(Tdiff)
+        Tdiffs.append(Tdiff)
+    ifformat = """ else if (ind1[tid] == %s) {
+          y[tid] = %s;
+        }"""
+    for i,T in enumerate(Tlist):
+        T = str(T).replace("x","xxx[tid]")
+        T = changestarstar(T)
+        if i == 0:
+            chevFstr = """        if (ind1[tid] == %s) {
+          y[tid] = %s;
+        }"""%(i,T)
+            continue
+        chevFstr += ifformat%(i,T)
+    for i,Tdiff in enumerate(Tdiffs):
+        Tdiff = str(Tdiff).replace("x","xxx[tid]")
+        Tdiff = changestarstar(Tdiff)
+        if i == 0:
+            chevFdiffstr = """        if (ind1[tid] == %s) {
+          y[tid] = %s;
+        }"""%(i,Tdiff)
+            continue
+        chevFdiffstr += ifformat%(i,Tdiff)
+
+    loaded_from_source = r'''
+extern "C"{
+__global__ void chevF(const int* ind1, const float* xxx, float* y, unsigned int N)
+{
+    unsigned int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    if (tid < N) {
+%s
+    }
+}
+__global__ void chevF_diff(const int* ind1, const float* xxx, const bool* diffQ, float* y, unsigned int N)
+{
+    unsigned int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    if (tid < N) {
+      if (diffQ[tid]) {
+%s
+      } else {
+%s
+      }
+    }
+}
+}'''%(chevFstr,chevFdiffstr, chevFstr)
+    #print(loaded_from_source)
+    #exit()
+    return loaded_from_source
+def changestarstar(T):
+    T = T.split()
+    returnT = ""
+    for T_part in T:
+        if "**" in T_part:
+            T_flont,n = T_part.split("**")
+            Tlist = T_flont.split("*")
+            n = int(n)
+            returnT += Tlist[0]
+            for Tfrontpart in Tlist[1:-1]:
+                returnT += "*" + Tfrontpart
+            Tntime = "*%s"%(Tlist[-1])
+            returnT += Tntime*n
+        else:
+            returnT += " %s "%T_part
+    return returnT
